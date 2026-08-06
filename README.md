@@ -13,10 +13,8 @@ Proyek React + Vite + TypeScript untuk platform Abis.in.
 - Leaflet.js
 
 ## Setup
-1. Copy `.env.example` ke `.env`
-2. Isi `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY`
-3. Jalankan `npm install`
-4. Jalankan `npm run dev`
+1. Jalankan `npm install`
+2. Jalankan `npm run dev`
 
 ## Struktur
 - `src/lib/supabase.ts` untuk inisialisasi Supabase

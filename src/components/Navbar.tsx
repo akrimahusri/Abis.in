@@ -7,8 +7,8 @@ export default function Navbar() {
   const [email, setEmail] = useState<string | null>(null)
   const location = useLocation()
 
-  // Sembunyikan Navbar global ini di halaman Beranda dan Auth
-  if (location.pathname === '/' || location.pathname === '/auth') {
+  // Sembunyikan Navbar global ini di halaman Beranda, Auth, dan Penjual (karena punya layout sendiri)
+  if (location.pathname === '/' || location.pathname === '/auth' || location.pathname.startsWith('/penjual')) {
     return null
   }
 
