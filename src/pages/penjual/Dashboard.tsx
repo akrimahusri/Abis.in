@@ -1,50 +1,78 @@
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PenjualLayout from '../../layouts/PenjualLayout'
 import { Wallet, Clock, Edit2, Trash2, AlertTriangle, ChevronRight, Plus } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { getFoodImageUrl } from '../../lib/storage'
 
-const dummyPosts = [
-  {
-    id: 1,
-    title: 'Tumis Kangkung',
-    price: 6500,
-    desc: 'Tumis kangkung yang masih segar, dimasak hari ini dan siap dinikmati.',
-    image: 'https://images.unsplash.com/photo-1548943487-a2e4e43b4859?w=500&h=400&fit=crop',
-    status: 'Layak Jual',
-    timeLeft: '2 jam',
-  },
-  {
-    id: 2,
-    title: 'Nasi Ayam Geprek',
-    price: 15500,
-    desc: 'Nasi ayam geprek dengan sambal pedas, baru dimasak hari ini dan masih layak konsumsi.',
-    image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&h=400&fit=crop',
-    status: 'Layak Jual',
-    timeLeft: '14 jam',
-  },
-  {
-    id: 3,
-    title: 'Nasi Kotak',
-    price: 18000,
-    desc: 'Nasi kotak lengkap dengan lauk dan sayur, masih fresh dan layak untuk dinikmati.',
-    image: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=500&h=400&fit=crop',
-    status: 'Layak Jual',
-    timeLeft: '6 jam',
-  },
-  {
-    id: 4,
-    title: 'Nasi Ikan Gegok',
-    price: 15000,
-    desc: 'Nasi ikan gegok dengan cita rasa khas dan bumbu rempah, masih segar dan siap disantap.',
-    image: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=500&h=400&fit=crop',
-    status: 'Tidak Layak',
-    timeLeft: '0 jam',
-    expired: true,
-  },
-]
+type PostingItem = {
+  id: string
+  nama_makanan: string
+  harga: number
+  status: string
+  batas_waktu_ambil: string | null
+  foto_url: string | null
+}
 
 export default function PenjualDashboard() {
   const navigate = useNavigate()
+  const [posts, setPosts] = useState<PostingItem[]>([])
+  const [loadingPosts, setLoadingPosts] = useState(true)
+
+  useEffect(() => {
+    const fetchPosts = async () => {
+      setLoadingPosts(true)
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session?.user) {
+        setPosts([])
+        setLoadingPosts(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('postingan_makanan')
+        .select('id, nama_makanan, harga, status, batas_waktu_ambil, foto_url')
+        .eq('penjual_id', session.user.id)
+        .order('created_at', { ascending: false })
+
+      if (error || !data) {
+        setPosts([])
+      } else {
+        setPosts(data as PostingItem[])
+      }
+
+      setLoadingPosts(false)
+    }
+
+    fetchPosts()
+  }, [])
+
+  const postingCards = useMemo(() => {
+    if (posts.length === 0) {
+      return []
+    }
+
+    return posts.map((post, index) => {
+      const isExpired = post.status === 'tidak_layak_konsumsi' || post.status === 'diambil_maggot'
+      const label = isExpired ? 'Tidak Layak' : 'Layak Jual'
+      const image = post.foto_url ? (post.foto_url.startsWith('http') ? post.foto_url : getFoodImageUrl(post.foto_url)) : 'https://images.unsplash.com/photo-1548943487-a2e4e43b4859?w=500&h=400&fit=crop'
+
+      return {
+        id: post.id,
+        title: post.nama_makanan,
+        price: Number(post.harga) || 0,
+        desc: isExpired ? 'Postingan ini sudah tidak layak jual.' : 'Postingan makanan aktif dari akun penjual Anda.',
+        image,
+        status: label,
+        timeLeft: post.batas_waktu_ambil ? `Sampai ${new Date(post.batas_waktu_ambil).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}` : `${index + 1} jam`,
+        expired: isExpired,
+      }
+    })
+  }, [posts])
 
   const goToPostingForm = () => {
     navigate('/penjual/postingan')
@@ -117,7 +145,11 @@ export default function PenjualDashboard() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {dummyPosts.map((post) => (
+            {loadingPosts ? (
+              <div className="col-span-full rounded-[2rem] border border-dashed border-slate-200 bg-white px-6 py-10 text-center text-slate-500">
+                Memuat postingan penjual...
+              </div>
+            ) : postingCards.length > 0 ? postingCards.map((post) => (
               <div key={post.id} className="group relative flex flex-col overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm">
                 <div className="relative h-48">
                   <img
@@ -172,7 +204,11 @@ export default function PenjualDashboard() {
                   </div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="col-span-full rounded-[2rem] border border-dashed border-slate-200 bg-white px-6 py-10 text-center text-slate-500">
+                Belum ada postingan tersimpan. Buat postingan baru untuk menampilkannya di sini.
+              </div>
+            )}
           </div>
         </div>
       </div>

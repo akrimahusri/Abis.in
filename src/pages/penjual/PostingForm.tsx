@@ -1,11 +1,16 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { CalendarDays, Camera, MapPin, Tag, Trash2, UtensilsCrossed } from 'lucide-react'
 import PenjualLayout from '../../layouts/PenjualLayout'
+import { supabase } from '../../lib/supabase'
 
 type StatusKondisi = 'layak' | 'organik'
 
 export default function PenjualPostingForm() {
+  const navigate = useNavigate()
   const [selectedStatus, setSelectedStatus] = useState<StatusKondisi>('layak')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     namaMakanan: '',
     kadaluarsa: '',
@@ -22,9 +27,50 @@ export default function PenjualPostingForm() {
 
   const isLayak = selectedStatus === 'layak'
 
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+    setLoading(true)
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session?.user) {
+      setError('Sesi login tidak ditemukan. Silakan masuk ulang.')
+      setLoading(false)
+      return
+    }
+
+    const parsedPrice = Number(form.hargaJual || form.hargaAsli || 0)
+    const parsedAmount = Number(form.jumlahPorsi || 1)
+    const pickupDate = form.kadaluarsa ? `${form.kadaluarsa}T18:00:00.000Z` : null
+
+    const { error: insertError } = await supabase.from('postingan_makanan').insert({
+      penjual_id: session.user.id,
+      foto_url: null,
+      nama_makanan: form.namaMakanan.trim(),
+      jumlah: Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 1,
+      status: selectedStatus === 'layak' ? 'layak_jual' : 'tidak_layak_konsumsi',
+      harga: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+      batas_waktu_ambil: pickupDate,
+      lokasi_lat: null,
+      lokasi_lng: null,
+    })
+
+    if (insertError) {
+      setError(insertError.message)
+      setLoading(false)
+      return
+    }
+
+    setLoading(false)
+    navigate('/penjual')
+  }
+
   return (
     <PenjualLayout>
-      <div className="mx-auto max-w-[1180px] py-6">
+      <form onSubmit={handleSubmit} className="mx-auto max-w-[1180px] py-6">
         <div className="mb-6">
           <h1 className="font-literata text-[2.2rem] font-bold leading-none text-[#1b4332]">Buat Postingan Baru</h1>
           <p className="mt-2 max-w-xl text-[0.96rem] text-[#42564e]">
@@ -218,15 +264,19 @@ export default function PenjualPostingForm() {
                 Batalkan
               </button>
               <button
-                type="button"
-                className="rounded-full bg-[#1b4332] px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#153b2d]"
+                type="submit"
+                disabled={loading}
+                className="rounded-full bg-[#1b4332] px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#153b2d] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Posting Sekarang
+                {loading ? 'Menyimpan...' : 'Posting Sekarang'}
               </button>
             </div>
+            {error && (
+              <p className="pt-4 text-right text-sm font-medium text-red-600">{error}</p>
+            )}
           </div>
         </div>
-      </div>
+      </form>
     </PenjualLayout>
   )
 }

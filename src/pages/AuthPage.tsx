@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { setCachedUserRole } from '../lib/auth'
 import { Store, ShoppingBag, Bug } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -52,6 +53,7 @@ export default function AuthPage() {
       if (profileRes.error) {
         setError(profileRes.error.message)
       } else {
+        setCachedUserRole(data.user.id, role)
         // If success, navigate to home or dashboard
         navigate(`/${role}`)
       }
@@ -67,6 +69,7 @@ export default function AuthPage() {
       // Find role and redirect
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
       if (profile) {
+        setCachedUserRole(data.user.id, profile.role)
         navigate(`/${profile.role}`)
       } else {
         navigate('/')

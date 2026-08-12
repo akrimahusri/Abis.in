@@ -87,6 +87,10 @@ create policy "Penjual can modify own posting" on postingan_makanan for all usin
   auth.uid() = penjual_id or auth.role() = 'authenticated'
 );
 
+create policy "Pembeli can view saleable postings" on postingan_makanan for select using (
+  status = 'layak_jual' and auth.role() = 'authenticated'
+);
+
 create policy "Peternak can view non-consumable postings" on postingan_makanan for select using (
   status = 'tidak_layak_konsumsi' or auth.uid() = penjual_id
 );

@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getCachedUserRole, setCachedUserRole } from '../lib/auth'
 
 interface ProtectedRouteProps {
   allowedRoles: string[]
@@ -21,8 +22,16 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) 
         return
       }
 
+      const cachedRole = getCachedUserRole(user.id)
+      if (cachedRole && allowedRoles.includes(cachedRole)) {
+        setIsAllowed(true)
+        setSessionLoaded(true)
+        return
+      }
+
       const { data: profile, error } = await supabase.from('profiles').select('role').eq('id', user.id).single()
       if (!error && profile && allowedRoles.includes(profile.role)) {
+        setCachedUserRole(user.id, profile.role)
         setIsAllowed(true)
       }
       setSessionLoaded(true)

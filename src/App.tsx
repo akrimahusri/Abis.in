@@ -7,6 +7,8 @@ import PenjualProfile from './pages/penjual/Profile'
 import PenjualPostingForm from './pages/penjual/PostingForm'
 import PenjualHistory from './pages/penjual/History'
 import PembeliDashboard from './pages/pembeli/Dashboard'
+import PembeliCart from './pages/pembeli/Keranjang'
+import PembeliRiwayat from './pages/pembeli/Riwayat'
 import PembeliDetail from './pages/pembeli/Detail'
 import PeternakDashboard from './pages/peternak/Dashboard'
 import AdminDashboard from './pages/admin/Dashboard'
@@ -38,6 +40,18 @@ function App() {
         <Route
           path="/penjual/*"
           element={<ProtectedRoute allowedRoles={['penjual']}><PenjualDashboard /></ProtectedRoute>}
+        />
+        <Route
+          path="/pembeli/keranjang"
+          element={<ProtectedRoute allowedRoles={['pembeli']}><PembeliCart /></ProtectedRoute>}
+        />
+        <Route
+          path="/pembeli/riwayat"
+          element={<ProtectedRoute allowedRoles={['pembeli']}><PembeliRiwayat /></ProtectedRoute>}
+        />
+        <Route
+          path="/pembeli/detail"
+          element={<ProtectedRoute allowedRoles={['pembeli']}><PembeliDetail /></ProtectedRoute>}
         />
         <Route
           path="/pembeli/*"
