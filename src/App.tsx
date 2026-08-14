@@ -10,6 +10,8 @@ import PembeliDashboard from './pages/pembeli/Dashboard'
 import PembeliCart from './pages/pembeli/Keranjang'
 import PembeliRiwayat from './pages/pembeli/Riwayat'
 import PembeliDetail from './pages/pembeli/Detail'
+import PeternakRiwayat from './pages/peternak/Riwayat'
+import PeternakProfil from './pages/peternak/Profil'
 import PeternakDashboard from './pages/peternak/Dashboard'
 import AdminDashboard from './pages/admin/Dashboard'
 import Navbar from './components/Navbar'
@@ -56,6 +58,18 @@ function App() {
         <Route
           path="/pembeli/*"
           element={<ProtectedRoute allowedRoles={['pembeli']}><PembeliDashboard /></ProtectedRoute>}
+        />
+        <Route
+          path="/peternak/riwayat"
+          element={<ProtectedRoute allowedRoles={['peternak']}><PeternakRiwayat /></ProtectedRoute>}
+        />
+        <Route
+          path="/peternak/profil"
+          element={<ProtectedRoute allowedRoles={['peternak']}><PeternakProfil /></ProtectedRoute>}
+        />
+        <Route
+          path="/peternak/profile"
+          element={<ProtectedRoute allowedRoles={['peternak']}><PeternakProfil /></ProtectedRoute>}
         />
         <Route
           path="/peternak/*"
