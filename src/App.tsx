@@ -13,6 +13,9 @@ import PembeliDetail from './pages/pembeli/Detail'
 import PeternakRiwayat from './pages/peternak/Riwayat'
 import PeternakProfil from './pages/peternak/Profil'
 import PeternakDashboard from './pages/peternak/Dashboard'
+import PeternakDetail from './pages/peternak/Detail'
+import PeternakKonfirmasi from './pages/peternak/Konfirmasi'
+import PeternakExplore from './pages/peternak/Explore'
 import AdminDashboard from './pages/admin/Dashboard'
 import Navbar from './components/Navbar'
 
@@ -70,6 +73,18 @@ function App() {
         <Route
           path="/peternak/profile"
           element={<ProtectedRoute allowedRoles={['peternak']}><PeternakProfil /></ProtectedRoute>}
+        />
+        <Route
+          path="/peternak/detail/:id"
+          element={<ProtectedRoute allowedRoles={['peternak']}><PeternakDetail /></ProtectedRoute>}
+        />
+        <Route
+          path="/peternak/konfirmasi/:id"
+          element={<ProtectedRoute allowedRoles={['peternak']}><PeternakKonfirmasi /></ProtectedRoute>}
+        />
+        <Route
+          path="/peternak/explore"
+          element={<ProtectedRoute allowedRoles={['peternak']}><PeternakExplore /></ProtectedRoute>}
         />
         <Route
           path="/peternak/*"
