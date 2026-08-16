@@ -12,20 +12,22 @@ export default function PeternakLayout({ children }: PeternakLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
   
-  const [userName, setUserName] = useState<string>('Memuat...')
-  const [userRole, setUserRole] = useState<string>('Mitra Penjual')
+  const [userName, setUserName] = useState<string>('Peternak Maggot')
+  const [userRole, setUserRole] = useState<string>('Mitra Peternak')
+  const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        const { data, error } = await supabase.from('profiles').select('name, role').eq('id', session.user.id).single()
+        const { data, error } = await supabase.from('profiles').select('name, role, avatar_url, nama_usaha').eq('id', session.user.id).single()
         if (data && !error) {
-          setUserName(data.name || session.user.email?.split('@')[0] || 'Pengguna')
+          setUserName(data.nama_usaha || data.name || session.user.email?.split('@')[0] || 'Peternak Maggot')
           setUserRole(data.role === 'peternak' ? 'Mitra Peternak' : data.role)
+          if (data.avatar_url) setUserAvatar(data.avatar_url)
         } else {
-          setUserName(session.user.email?.split('@')[0] || 'Pengguna')
+          setUserName(session.user.email?.split('@')[0] || 'Peternak Maggot')
         }
       }
     }
@@ -113,8 +115,12 @@ export default function PeternakLayout({ children }: PeternakLayoutProps) {
             <header className="flex items-center justify-between px-10 py-6">
               {/* Profile Section */}
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-abisCream flex items-center justify-center border-2 border-abisGreen text-abisGreen font-bold text-lg">
-                  {getInitials(userName)}
+                <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-abisGreen bg-[#1b4332] shadow-sm flex items-center justify-center">
+                  <img 
+                    src={userAvatar || 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=300&q=80'} 
+                    alt={userName} 
+                    className="w-full h-full object-cover"
+                  />
                 </div>
                 <div>
                   <h2 className="font-literata font-bold text-abisGreen text-lg leading-tight uppercase">{userName}</h2>

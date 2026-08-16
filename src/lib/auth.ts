@@ -24,6 +24,24 @@ export function getCachedUserRole(userId: string) {
   return null
 }
 
+export function getStoredRole(): string | null {
+  const rawValue = localStorage.getItem(ROLE_CACHE_KEY)
+  if (!rawValue) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as { userId?: string; role?: string }
+    if (typeof parsed.role === 'string') {
+      return parsed.role
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
 export function clearCachedUserRole() {
   localStorage.removeItem(ROLE_CACHE_KEY)
 }

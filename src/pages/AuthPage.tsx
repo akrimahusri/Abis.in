@@ -47,6 +47,8 @@ export default function AuthPage() {
         email,
         role,
         name,
+        nama_usaha: role === 'penjual' || role === 'peternak' ? name : null,
+        alamat: address || null,
         status_verifikasi: 'pending' // Admin must verify seller and farmer. Buyer could be verified immediately, but keeping it simple.
       })
 

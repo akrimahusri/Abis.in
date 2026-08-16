@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getCachedUserRole, setCachedUserRole } from '../lib/auth'
+import { getCachedUserRole, getStoredRole, setCachedUserRole } from '../lib/auth'
 
 interface ProtectedRouteProps {
   allowedRoles: string[]
@@ -14,11 +14,20 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) 
 
   useEffect(() => {
     const fetchSession = async () => {
+      // 1. Check cached stored role first (e.g. admin login or session cache)
+      const storedRole = getStoredRole()
+      if (storedRole && allowedRoles.includes(storedRole)) {
+        setIsAllowed(true)
+        setSessionLoaded(true)
+        return
+      }
+
+      // 2. Fallback to Supabase session & profiles check
       const { data } = await supabase.auth.getSession()
       const user = data.session?.user
       if (!user) {
-        setSessionLoaded(true)
         setIsAllowed(false)
+        setSessionLoaded(true)
         return
       }
 
@@ -33,6 +42,8 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) 
       if (!error && profile && allowedRoles.includes(profile.role)) {
         setCachedUserRole(user.id, profile.role)
         setIsAllowed(true)
+      } else {
+        setIsAllowed(false)
       }
       setSessionLoaded(true)
     }
@@ -45,6 +56,9 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) 
   }
 
   if (!isAllowed) {
+    if (allowedRoles.includes('admin')) {
+      return <Navigate to="/admin/login" replace />
+    }
     return <Navigate to="/auth" replace />
   }
 

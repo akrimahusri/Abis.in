@@ -13,7 +13,8 @@ export default function Navbar() {
     location.pathname === '/auth' ||
     location.pathname.startsWith('/penjual') ||
     location.pathname.startsWith('/pembeli') ||
-    location.pathname.startsWith('/peternak')
+    location.pathname.startsWith('/peternak') ||
+    location.pathname.startsWith('/admin')
   ) {
     return null
   }

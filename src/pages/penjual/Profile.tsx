@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import PenjualLayout from '../../layouts/PenjualLayout'
-import { Clock3, Edit2, Mail, MapPin, MessageCircle, ShieldCheck, Star, Store, X } from 'lucide-react'
+import { Camera, Check, Clock3, Edit2, Mail, MapPin, MessageCircle, RefreshCw, ShieldCheck, Star, Store, X } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { uploadFoodImage, getFoodImageUrl } from '../../lib/storage'
 
 const initialOperationalHours = [
   { day: 'Senin', buka: '08:00', tutup: '20:00', pickup: '19:00 - 20:30' },
@@ -13,23 +15,87 @@ const initialOperationalHours = [
 ]
 
 const initialProfile = {
-  businessName: 'Warteg Bahagia',
-  category: 'Rumah Makan',
-  address: 'Jl. Sultan Iskandar Muda, Gp Lambung, Like-Heu, Banda Aceh',
-  whatsapp: '+62 812-3456-7890',
-  email: 'kontak@wartegbahagia.com',
+  businessName: '',
+  category: 'Usaha Kuliner',
+  address: 'Banda Aceh',
+  whatsapp: '',
+  email: '',
+  fotoUrl: '',
   operationalHours: initialOperationalHours,
 }
 
 export default function PenjualProfile() {
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState(initialProfile)
   const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordForm, setPasswordForm] = useState({
     oldPassword: '',
     newPassword: '',
     confirmPassword: '',
   })
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg)
+    setTimeout(() => {
+      setToastMessage(null)
+    }, 3500)
+  }
+
+  // Fetch Supabase Profile on Mount
+  useEffect(() => {
+    const fetchSupabaseProfile = async () => {
+      setLoading(true)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          setUserId(session.user.id)
+          const { data: dbProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+
+          if (dbProfile) {
+            let parsedHours = initialOperationalHours
+            if (dbProfile.jam_operasional) {
+              try {
+                parsedHours = JSON.parse(dbProfile.jam_operasional)
+              } catch (e) {
+                // Keep default fallback
+              }
+            }
+
+            setProfile({
+              businessName: dbProfile.nama_usaha || dbProfile.name || session.user.email?.split('@')[0] || 'Penjual',
+              category: dbProfile.kategori || 'Usaha Kuliner',
+              address: dbProfile.alamat || 'Banda Aceh',
+              whatsapp: dbProfile.telepon || '-',
+              email: dbProfile.email || session.user.email || '-',
+              fotoUrl: dbProfile.foto_url || dbProfile.avatar_url || '',
+              operationalHours: parsedHours,
+            })
+          } else {
+            setProfile((prev) => ({
+              ...prev,
+              email: session.user.email || '',
+              businessName: session.user.email?.split('@')[0] || 'Penjual',
+            }))
+          }
+        }
+      } catch (err) {
+        console.warn('Profile fetch error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchSupabaseProfile()
+  }, [])
 
   const mapStyle = {
     backgroundImage:
@@ -54,45 +120,158 @@ export default function PenjualProfile() {
     setIsEditing(true)
   }
 
-  const handleSaveProfile = (event: React.FormEvent) => {
-    event.preventDefault()
-    setIsEditing(false)
-  }
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-  const handlePasswordSubmit = (event: React.FormEvent) => {
-    event.preventDefault()
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('Konfirmasi kata sandi baru tidak cocok.')
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Ukuran foto terlalu besar. Maksimal 5MB.')
       return
     }
-    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
-    setShowPasswordModal(false)
+
+    const localPreviewUrl = URL.createObjectURL(file)
+    setProfile((prev) => ({ ...prev, fotoUrl: localPreviewUrl }))
+
+    if (userId) {
+      try {
+        const path = `penjual-avatar/${userId}_${Date.now()}`
+        const uploadedPath = await uploadFoodImage(file, path)
+        if (uploadedPath) {
+          const publicUrl = getFoodImageUrl(uploadedPath)
+          setProfile((prev) => ({ ...prev, fotoUrl: publicUrl }))
+          await supabase.from('profiles').update({ foto_url: publicUrl }).eq('id', userId)
+        }
+      } catch (err) {
+        console.warn('Photo upload note:', err)
+      }
+    }
+    showToast('Foto profil berhasil diunggah!')
+  }
+
+  const handleSaveProfile = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setSaving(true)
+
+    if (userId) {
+      try {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            nama_usaha: profile.businessName,
+            name: profile.businessName,
+            kategori: profile.category,
+            alamat: profile.address,
+            telepon: profile.whatsapp,
+            foto_url: profile.fotoUrl,
+            jam_operasional: JSON.stringify(profile.operationalHours),
+          })
+          .eq('id', userId)
+
+        if (updateError) {
+          showToast(`Gagal menyimpan: ${updateError.message}`)
+          setSaving(false)
+          return
+        }
+
+        await supabase.auth.updateUser({
+          data: {
+            name: profile.businessName,
+            phone: profile.whatsapp,
+            address: profile.address,
+            avatar_url: profile.fotoUrl,
+          },
+        })
+        window.dispatchEvent(new Event('profileUpdated'))
+      } catch (err) {
+        console.warn('Profile save note:', err)
+      }
+    }
+
+    setSaving(false)
+    setIsEditing(false)
+    showToast('Profil berhasil disimpan ke database Supabase!')
+  }
+
+  const handlePasswordSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      showToast('Konfirmasi kata sandi baru tidak cocok.')
+      return
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: passwordForm.newPassword,
+      })
+
+      if (error) {
+        showToast(`Gagal mengganti kata sandi: ${error.message}`)
+      } else {
+        showToast('Kata sandi berhasil diperbarui!')
+        setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
+        setShowPasswordModal(false)
+      }
+    } catch (err) {
+      showToast('Terjadi kesalahan saat mengganti kata sandi.')
+    }
   }
 
   const handleWhatsApp = () => {
-    window.open('https://wa.me/6281234567890', '_blank', 'noopener,noreferrer')
+    const cleanPhone = profile.whatsapp.replace(/[^0-9]/g, '')
+    window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer')
   }
 
   const handleEmail = () => {
-    window.location.href = 'mailto:kontak@wartegbahagia.com'
+    window.location.href = `mailto:${profile.email}`
   }
 
   return (
     <PenjualLayout>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handlePhotoUpload}
+        accept="image/*"
+        className="hidden"
+      />
+
+      {/* TOAST BANNER */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-3 rounded-2xl bg-[#0e2718] px-5 py-3.5 text-white shadow-2xl border border-emerald-500/40 animate-bounce">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white">
+            <Check className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-semibold">{toastMessage}</span>
+        </div>
+      )}
+
       <div className="pb-6 pt-5">
         <header className="mb-6 flex flex-col gap-4 rounded-[1.4rem] bg-[#f7f5ef] px-4 py-4 shadow-[0_1px_0_rgba(29,54,42,0.04)] sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:py-5">
           <div className="flex items-center gap-4">
-            <div className="h-14 w-14 overflow-hidden rounded-full border-[3px] border-[#1b4332] bg-[#1b4332] shadow-sm">
-              <img
-                src="https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=300&q=80"
-                alt="Warteg Bahagia"
-                className="h-full w-full object-cover"
-              />
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="group relative h-14 w-14 overflow-hidden rounded-full border-[3px] border-[#1b4332] bg-[#1b4332] text-white flex items-center justify-center shadow-sm cursor-pointer shrink-0"
+              title="Klik untuk mengubah foto profil"
+            >
+              {profile.fotoUrl ? (
+                <img
+                  src={profile.fotoUrl}
+                  alt={profile.businessName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Store className="w-7 h-7 text-white" />
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                <Camera className="w-5 h-5" />
+              </div>
             </div>
 
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="font-literata text-[1.6rem] font-bold leading-none text-[#1b4332] sm:text-[2.05rem]">{profile.businessName}</h1>
+                <h1 className="font-literata text-[1.6rem] font-bold leading-none text-[#1b4332] sm:text-[2.05rem]">
+                  {loading ? 'Memuat profil...' : profile.businessName}
+                </h1>
                 <span className="inline-flex items-center gap-1 rounded-full border border-[#1b4332] bg-[#e7efe9] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#1b4332]">
                   <ShieldCheck className="h-3 w-3" />
                   Mitra Verifikasi
@@ -224,9 +403,16 @@ export default function PenjualProfile() {
               </button>
               <button
                 type="submit"
-                className="rounded-full bg-[#1b4332] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#14342a]"
+                disabled={saving}
+                className="rounded-full bg-[#1b4332] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#14342a] disabled:opacity-70 flex items-center gap-2"
               >
-                Simpan Perubahan
+                {saving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Menyimpan...
+                  </>
+                ) : (
+                  'Simpan Perubahan'
+                )}
               </button>
             </div>
           </form>

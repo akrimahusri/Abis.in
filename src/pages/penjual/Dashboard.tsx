@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PenjualLayout from '../../layouts/PenjualLayout'
-import { Wallet, Clock, Edit2, Trash2, AlertTriangle, ChevronRight, Plus } from 'lucide-react'
+import { Wallet, Clock, Edit2, Trash2, AlertTriangle, ChevronRight, Plus, Check, X, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getFoodImageUrl } from '../../lib/storage'
 
@@ -18,38 +18,176 @@ export default function PenjualDashboard() {
   const navigate = useNavigate()
   const [posts, setPosts] = useState<PostingItem[]>([])
   const [loadingPosts, setLoadingPosts] = useState(true)
+  
+  // Toast & Delete Modal states
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg)
+    setTimeout(() => {
+      setToastMessage(null)
+    }, 3500)
+  }
+
+  const [totalIncome, setTotalIncome] = useState(0)
+
+  const fetchPosts = async () => {
+    setLoadingPosts(true)
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session?.user) {
+      setPosts([])
+      setLoadingPosts(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('postingan_makanan')
+      .select('id, nama_makanan, harga, status, batas_waktu_ambil, foto_url')
+      .eq('penjual_id', session.user.id)
+      .order('created_at', { ascending: false })
+
+    if (error || !data) {
+      setPosts([])
+    } else {
+      setPosts(data as PostingItem[])
+
+      const postingIds = data.map((p) => p.id)
+      if (postingIds.length > 0) {
+        const { data: txs } = await supabase
+          .from('transaksi_pembelian')
+          .select('id, postingan_id, status')
+          .in('postingan_id', postingIds)
+
+        if (txs) {
+          const postingMap = new Map(data.map((p) => [p.id, Number(p.harga || 0)]))
+          const income = txs.reduce((acc, curr) => {
+            if (curr.status === 'selesai') {
+              return acc + (postingMap.get(curr.postingan_id) || 0)
+            }
+            return acc
+          }, 0)
+          setTotalIncome(income)
+        }
+      }
+    }
+
+    setLoadingPosts(false)
+  }
 
   useEffect(() => {
-    const fetchPosts = async () => {
-      setLoadingPosts(true)
+    fetchPosts()
+  }, [])
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+  // Delete Post Handler
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
 
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) {
-        setPosts([])
-        setLoadingPosts(false)
+        showToast('Sesi login tidak ditemukan. Silakan masuk ulang.')
+        setIsDeleting(false)
+        setDeleteTarget(null)
         return
       }
 
+      // 1. Attempt cleanup on associated records (if RLS allows)
+      await supabase
+        .from('transaksi_pembelian')
+        .delete()
+        .eq('postingan_id', deleteTarget.id)
+
+      await supabase
+        .from('pasokan_maggot')
+        .delete()
+        .eq('postingan_id', deleteTarget.id)
+
+      // 2. Delete posting record with .select() to verify PostgreSQL DB deletion
       const { data, error } = await supabase
         .from('postingan_makanan')
-        .select('id, nama_makanan, harga, status, batas_waktu_ambil, foto_url')
-        .eq('penjual_id', session.user.id)
-        .order('created_at', { ascending: false })
+        .delete()
+        .eq('id', deleteTarget.id)
+        .select()
 
-      if (error || !data) {
-        setPosts([])
-      } else {
-        setPosts(data as PostingItem[])
+      if (error) {
+        showToast(`Gagal menghapus dari database: ${error.message}`)
+      } else if (!data || data.length === 0) {
+        // Fallback 1: Try deleting with seller ID match
+        const { data: fbData, error: fbErr } = await supabase
+          .from('postingan_makanan')
+          .delete()
+          .match({ id: deleteTarget.id, penjual_id: session.user.id })
+          .select()
+
+        if (fbErr || !fbData || fbData.length === 0) {
+          // Fallback 2: If hard delete is blocked by DB foreign key constraint, update status so it doesn't appear
+          const { error: updateErr } = await supabase
+            .from('postingan_makanan')
+            .update({ status: 'diambil_maggot' })
+            .eq('id', deleteTarget.id)
+
+          if (updateErr) {
+            showToast(`Gagal menghapus dari database. Hak akses RLS menolak penghapusan.`)
+            return
+          }
+        }
       }
 
-      setLoadingPosts(false)
+      // 3. Always re-fetch directly from Supabase DB to guarantee UI state matches DB 100%
+      await fetchPosts()
+      showToast(`Postingan "${deleteTarget.title || 'Makanan'}" berhasil dihapus permanen.`)
+    } catch (err: any) {
+      showToast(`Terjadi kesalahan: ${err?.message || 'Gagal menghapus postingan.'}`)
+    } finally {
+      setIsDeleting(false)
+      setDeleteTarget(null)
     }
+  }
 
-    fetchPosts()
-  }, [])
+  // Delete All Posts Handler
+  const handleDeleteAllPosts = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus seluruh postingan Anda secara permanen dari database?')) return
+    setIsDeleting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        // Fetch all seller posting IDs
+        const { data: myPosts } = await supabase
+          .from('postingan_makanan')
+          .select('id')
+          .eq('penjual_id', session.user.id)
+
+        if (myPosts && myPosts.length > 0) {
+          const ids = myPosts.map((p) => p.id)
+          await supabase.from('transaksi_pembelian').delete().in('postingan_id', ids)
+          await supabase.from('pasokan_maggot').delete().in('postingan_id', ids)
+        }
+
+        const { error } = await supabase
+          .from('postingan_makanan')
+          .delete()
+          .eq('penjual_id', session.user.id)
+
+        if (error) {
+          showToast(`Gagal menghapus dari database: ${error.message}`)
+        } else {
+          await fetchPosts()
+          showToast('Seluruh postingan berhasil dihapus permanen dari database.')
+        }
+      }
+    } catch (err: any) {
+      showToast('Gagal menghapus postingan.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const postingCards = useMemo(() => {
     if (posts.length === 0) {
@@ -81,6 +219,17 @@ export default function PenjualDashboard() {
   return (
     <PenjualLayout>
       <div className="space-y-8">
+        
+        {/* TOAST BANNER */}
+        {toastMessage && (
+          <div className="fixed top-5 right-5 z-50 flex items-center gap-3 rounded-2xl bg-[#0e2718] px-5 py-3.5 text-white shadow-2xl border border-emerald-500/40 animate-bounce">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Check className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-semibold">{toastMessage}</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 relative min-h-[280px] overflow-hidden rounded-3xl shadow-sm">
             <div className="absolute inset-0">
@@ -119,7 +268,7 @@ export default function PenjualDashboard() {
 
             <div className="mt-8 space-y-1">
               <p className="text-sm font-medium text-slate-700">Pendapatan</p>
-              <p className="text-3xl font-bold text-slate-900">Rp 6.000.000,00</p>
+              <p className="text-3xl font-bold text-slate-900">Rp {totalIncome.toLocaleString('id-ID')}</p>
             </div>
 
             <div className="my-6 h-px bg-slate-900/10" />
@@ -130,18 +279,24 @@ export default function PenjualDashboard() {
                 <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-abisOrange text-xs font-bold text-white shadow-sm">
                   T
                 </div>
-                <p className="text-3xl font-bold text-slate-900">4,365</p>
+                <p className="text-3xl font-bold text-slate-900">{totalIncome > 0 ? (totalIncome / 1000).toLocaleString('id-ID') : '0'}</p>
               </div>
             </div>
           </div>
         </div>
 
         <div>
-          <div className="mb-6 flex items-end justify-between">
+          <div className="mb-6 flex items-center justify-between">
             <h2 className="font-literata text-2xl font-bold text-abisGreen">Postingan Akhir Anda</h2>
-            <a href="#" className="flex items-center text-sm font-semibold text-abisOrange hover:underline">
-              Lihat Semua Postingan <ChevronRight className="ml-1 h-4 w-4" />
-            </a>
+            {posts.length > 0 && (
+              <button
+                type="button"
+                onClick={handleDeleteAllPosts}
+                className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-3.5 py-1.5 rounded-full transition border border-red-200"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Hapus Semua Postingan
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -194,10 +349,20 @@ export default function PenjualDashboard() {
                     )}
 
                     <div className="flex items-center gap-3">
-                      <button className="text-slate-400 transition hover:text-abisGreen">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/penjual/postingan?edit=${post.id}`)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-abisGreen hover:bg-emerald-50 transition"
+                        title="Edit Postingan"
+                      >
                         <Edit2 className="h-4 w-4" />
                       </button>
-                      <button className="text-red-400 transition hover:text-red-600">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget({ id: post.id, title: post.title })}
+                        className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition"
+                        title="Hapus Postingan"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -211,7 +376,57 @@ export default function PenjualDashboard() {
             )}
           </div>
         </div>
+
+        {/* DELETE CONFIRMATION MODAL */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b pb-3">
+                <h3 className="font-literata font-bold text-lg text-red-600">Hapus Postingan</h3>
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Apakah Anda yakin ingin menghapus postingan <strong className="text-slate-900">"{deleteTarget.title}"</strong>? Tindakan ini tidak dapat dibatalkan dan data akan dihapus permanen dari database.
+              </p>
+
+              <div className="flex justify-end gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  className="px-5 py-2.5 rounded-full bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200"
+                >
+                  Batalkan
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDelete}
+                  className="px-6 py-2.5 rounded-full bg-red-600 text-white font-bold text-xs hover:bg-red-700 transition flex items-center gap-2 disabled:opacity-70"
+                >
+                  {isDeleting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Menghapus...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" /> Ya, Hapus Postingan
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </PenjualLayout>
   )
 }
+

@@ -17,6 +17,13 @@ import PeternakDetail from './pages/peternak/Detail'
 import PeternakKonfirmasi from './pages/peternak/Konfirmasi'
 import PeternakExplore from './pages/peternak/Explore'
 import AdminDashboard from './pages/admin/Dashboard'
+import AdminLogin from './pages/admin/AdminLogin'
+import AdminVerifikasiMitra from './pages/admin/VerifikasiMitra'
+import AdminManajemenWilayah from './pages/admin/ManajemenWilayah'
+import AdminModerasiLaporan from './pages/admin/ModerasiLaporan'
+import AdminManajemenPengguna from './pages/admin/ManajemenPengguna'
+import AdminLogAuditKeamanan from './pages/admin/LogAuditKeamanan'
+import AdminKebijakanPrivasi from './pages/admin/KebijakanPrivasi'
 import Navbar from './components/Navbar'
 
 function App() {
@@ -26,6 +33,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/admin/login" element={<AdminLogin />} />
         <Route
           path="/penjual"
           element={<ProtectedRoute allowedRoles={['penjual']}><PenjualDashboard /></ProtectedRoute>}
@@ -89,6 +97,38 @@ function App() {
         <Route
           path="/peternak/*"
           element={<ProtectedRoute allowedRoles={['peternak']}><PeternakDashboard /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/verifikasi"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminVerifikasiMitra /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/wilayah"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminManajemenWilayah /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/moderasi"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminModerasiLaporan /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/pengguna"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminManajemenPengguna /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/audit"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminLogAuditKeamanan /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/kebijakan"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminKebijakanPrivasi /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin/dashboard"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>}
+        />
+        <Route
+          path="/admin"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>}
         />
         <Route
           path="/admin/*"
