@@ -10,6 +10,6 @@ Anggota Tim:
 Deskripsi Karya:
 Abis.in adalah platform digital pengelolaan surplus makanan dan limbah organik berbasis komunitas yang menghubungkan penjual (warung/resto), pembeli, dan peternak maggot BSF. Platform ini bertujuan untuk mengurangi food waste dengan mendistribusikan makanan surplus yang masih layak konsumsi kepada pembeli dengan harga terjangkau, serta menyalurkan sisa makanan yang sudah tidak layak konsumsi kepada peternak sebagai pakan organik.
 
-Link Deploy Sistem
+Link Deploy Sistem:
 
 
