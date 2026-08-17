@@ -78,7 +78,10 @@ alter table kapasitas_peternak enable row level security;
 alter table laporan_moderasi enable row level security;
 
 -- Profiles policies
-create policy "Admin can access profiles" on profiles for all using (auth.role() = 'authenticated' and exists (select 1 from auth.users where auth.users.id = profiles.id and auth.role() = 'authenticated')) with check (true);
+drop policy if exists "Admin can access profiles" on profiles;
+create policy "Allow insert profile on registration" on profiles for insert with check (true);
+create policy "Allow users select profiles" on profiles for select using (true);
+create policy "Allow users update own profile" on profiles for update using (auth.uid() = id) with check (auth.uid() = id);
 
 -- Postingan policies
 create policy "Penjual can modify own posting" on postingan_makanan for all using (

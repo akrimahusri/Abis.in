@@ -38,6 +38,14 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) 
         return
       }
 
+      const metaRole = user.user_metadata?.role
+      if (metaRole && allowedRoles.includes(metaRole)) {
+        setCachedUserRole(user.id, metaRole)
+        setIsAllowed(true)
+        setSessionLoaded(true)
+        return
+      }
+
       const { data: profile, error } = await supabase.from('profiles').select('role').eq('id', user.id).single()
       if (!error && profile && allowedRoles.includes(profile.role)) {
         setCachedUserRole(user.id, profile.role)

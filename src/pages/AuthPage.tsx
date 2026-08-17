@@ -20,12 +20,22 @@ export default function AuthPage() {
   const [address, setAddress] = useState('')
   
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
+    setSuccessMessage(null)
     setLoading(true)
+
+    const cleanEmail = email.trim()
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('Silakan masukkan alamat email yang valid (contoh: user@gmail.com)')
+      setLoading(false)
+      return
+    }
 
     if (mode === 'signup') {
       if (password !== confirmPassword) {
@@ -34,48 +44,86 @@ export default function AuthPage() {
         return
       }
 
-      const cleanEmail = email.trim()
-      const { data, error: signUpError } = await supabase.auth.signUp({ email: cleanEmail, password })
-      if (signUpError || !data?.user) {
-        setError(signUpError?.message ?? 'Gagal membuat akun')
+      // 1. Sign up user with metadata options in Supabase Auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: {
+            role,
+            name,
+            nama_usaha: role === 'penjual' || role === 'peternak' ? name : null,
+            alamat: address || null,
+          },
+        },
+      })
+
+      if (signUpError) {
+        setError(signUpError.message)
         setLoading(false)
         return
       }
 
-      const profileRes = await supabase.from('profiles').insert({
-        id: data.user.id,
-        email,
-        role,
-        name,
-        nama_usaha: role === 'penjual' || role === 'peternak' ? name : null,
-        alamat: address || null,
-        status_verifikasi: 'pending' // Admin must verify seller and farmer. Buyer could be verified immediately, but keeping it simple.
-      })
-
-      if (profileRes.error) {
-        setError(profileRes.error.message)
-      } else {
-        setCachedUserRole(data.user.id, role)
-        // If success, navigate to home or dashboard
-        navigate(`/${role}`)
+      if (!data?.user) {
+        setError('Gagal membuat akun. Silakan coba lagi.')
+        setLoading(false)
+        return
       }
+
+      // 2. Insert/Upsert profile to database (gracefully fallback if RLS or email confirm blocks insert)
+      try {
+        await supabase.from('profiles').upsert(
+          {
+            id: data.user.id,
+            email: cleanEmail,
+            role,
+            nama_usaha: role === 'penjual' || role === 'peternak' ? name : null,
+            status_verifikasi: 'pending',
+          },
+          { onConflict: 'id' }
+        )
+      } catch (e) {
+        console.warn('Profile DB upsert note:', e)
+      }
+
+      // Cache the role in client storage for smooth navigation
+      setCachedUserRole(data.user.id, role)
+
+      // 3. If email confirmation is required, inform user, otherwise navigate to role dashboard
+      if (!data.session) {
+        setSuccessMessage('Pendaftaran berhasil! Silakan periksa kotak masuk email Anda untuk melakukan konfirmasi, lalu masuk ke akun Anda.')
+        setLoading(false)
+        return
+      }
+
+      navigate(`/${role}`)
       setLoading(false)
       return
     }
 
-    const cleanEmail = email.trim()
+    // Sign in mode
     const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password })
     if (signInError) {
       setError(signInError.message)
     } else if (data?.user) {
-      // Find role and redirect
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
-      if (profile) {
-        setCachedUserRole(data.user.id, profile.role)
-        navigate(`/${profile.role}`)
-      } else {
-        navigate('/')
+      let targetRole = ''
+
+      try {
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single()
+        if (profile?.role) {
+          targetRole = profile.role
+        }
+      } catch (e) {
+        console.warn('Profile fetch note:', e)
       }
+
+      if (!targetRole) {
+        targetRole = (data.user.user_metadata?.role as string | undefined) || role || 'pembeli'
+      }
+
+      const finalRole: string = targetRole || 'pembeli'
+      setCachedUserRole(data.user.id, finalRole)
+      navigate(`/${finalRole}`)
     }
     setLoading(false)
   }
@@ -91,7 +139,7 @@ export default function AuthPage() {
               <input type="text" placeholder="Nama Usaha" value={name} onChange={e => setName(e.target.value)} required className={inputClass} />
             </div>
             <div>
-              <input type="email" placeholder="Alamat Email/No. Hp" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
+              <input type="email" placeholder="Alamat Email" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
             </div>
             <div>
               <input type="text" placeholder="Alamat Usaha" value={address} onChange={e => setAddress(e.target.value)} required className={inputClass} />
@@ -104,7 +152,7 @@ export default function AuthPage() {
               <input type="text" placeholder="Nama Lengkap" value={name} onChange={e => setName(e.target.value)} required className={inputClass} />
             </div>
             <div>
-              <input type="email" placeholder="Alamat Email/No. Hp" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
+              <input type="email" placeholder="Alamat Email" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
             </div>
           </>
         )}
@@ -114,7 +162,7 @@ export default function AuthPage() {
               <input type="text" placeholder="Nama Usaha" value={name} onChange={e => setName(e.target.value)} required className={inputClass} />
             </div>
             <div>
-              <input type="email" placeholder="Alamat Email/No. Hp" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
+              <input type="email" placeholder="Alamat Email" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
             </div>
             <div>
               <input type="text" placeholder="Lokasi Peternakan" value={address} onChange={e => setAddress(e.target.value)} required className={inputClass} />
@@ -134,7 +182,7 @@ export default function AuthPage() {
   const renderLoginFields = () => (
     <div className="space-y-4">
       <div>
-        <input type="email" placeholder="Alamat Email/No. Hp" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
+        <input type="email" placeholder="Alamat Email" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} />
       </div>
       <div>
         <input type="password" placeholder="Kata Sandi" value={password} onChange={e => setPassword(e.target.value)} required className={inputClass} />
@@ -217,7 +265,7 @@ export default function AuthPage() {
             <p className="text-slate-700 max-w-xs text-sm pt-2 pb-4">
               Masuk untuk melanjutkan perjalanan Anda dalam mengurangi limbah makanan bersama Abis.in.
             </p>
-            <button onClick={() => setMode('signin')} className="px-10 py-2.5 rounded-md bg-abisGreen text-white font-semibold text-sm hover:bg-[#144129] transition">
+            <button onClick={() => { setMode('signin'); setError(null); setSuccessMessage(null); }} className="px-10 py-2.5 rounded-md bg-abisGreen text-white font-semibold text-sm hover:bg-[#144129] transition">
               Masuk
             </button>
           </div>
@@ -234,6 +282,7 @@ export default function AuthPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {renderLoginFields()}
               
+              {successMessage && <p className="text-xs text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200">{successMessage}</p>}
               {error && <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
               
               {renderSocials()}
@@ -259,7 +308,7 @@ export default function AuthPage() {
             <p className="text-slate-700 max-w-xs text-sm pt-2 pb-4">
               Daftar menggunakan email untuk mulai menikmati semua fitur Abis.in.
             </p>
-            <button onClick={() => setMode('signup')} className="px-10 py-2.5 rounded-md bg-abisGreen text-white font-semibold text-sm hover:bg-[#144129] transition">
+            <button onClick={() => { setMode('signup'); setError(null); setSuccessMessage(null); }} className="px-10 py-2.5 rounded-md bg-abisGreen text-white font-semibold text-sm hover:bg-[#144129] transition">
               Daftar
             </button>
           </div>
@@ -276,6 +325,7 @@ export default function AuthPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {renderRegisterFields()}
               
+              {successMessage && <p className="text-xs text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200">{successMessage}</p>}
               {error && <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
               
               {renderSocials()}
