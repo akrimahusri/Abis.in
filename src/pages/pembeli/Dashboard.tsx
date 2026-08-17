@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   UserRound,
   X,
+  Tag,
 } from 'lucide-react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import { divIcon } from 'leaflet'
@@ -76,7 +77,7 @@ type BuyerNotification = {
   title: string
   message: string
   time: string
-  type: 'chat' | 'order'
+  type: 'chat' | 'order' | 'promo'
   unread: boolean
 }
 
@@ -220,32 +221,7 @@ export default function PembeliDashboard() {
         }
       }
     } catch (e) {}
-    return [
-      {
-        id: 'seller-warung-berkah',
-        sellerName: 'Warung Berkah Surplus',
-        avatar: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=120&h=120&fit=crop',
-        lastMessage: 'Halo kak! Makanan masih hangat dan siap dijemput sebelum jam 6 sore ya.',
-        time: '11:15 WIB',
-        unread: true,
-        messages: [
-          { sender: 'buyer', text: 'Halo kak, apakah porsi makanan ini masih tersedia untuk dijemput?', time: '11:10 WIB' },
-          { sender: 'seller', text: 'Halo kak! Makanan masih hangat dan siap dijemput sebelum jam 6 sore ya.', time: '11:15 WIB' },
-        ],
-      },
-      {
-        id: 'seller-nasi-gurih',
-        sellerName: 'Rumah Makan Nasi Gurih',
-        avatar: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=120&h=120&fit=crop',
-        lastMessage: 'Silakan lakukan pesanan via aplikasi, lokasi penjemputan di Jl. Syech Abdurrauf No. 12 Banda Aceh. Terima kasih!',
-        time: '09:40 WIB',
-        unread: false,
-        messages: [
-          { sender: 'buyer', text: 'Permisi kak, lokasi penjemputannya di mana ya?', time: '09:35 WIB' },
-          { sender: 'seller', text: 'Silakan lakukan pesanan via aplikasi, lokasi penjemputan di Jl. Syech Abdurrauf No. 12 Banda Aceh. Terima kasih!', time: '09:40 WIB' },
-        ],
-      },
-    ]
+    return []
   })
 
   // Notifications State (persisted to localStorage)
@@ -256,20 +232,36 @@ export default function PembeliDashboard() {
     } catch (e) {}
     return [
       {
-        id: 'notif-1',
-        title: 'Balasan Chat dari Penjual',
-        message: 'Warung Berkah Surplus: "Halo kak! Makanan masih hangat dan siap dijemput..."',
-        time: '11:15 WIB',
-        type: 'chat',
+        id: 'notif-buyer-1',
+        title: 'Pesanan Makanan Dikonfirmasi',
+        message: 'Warung Berkah Surplus menyetujui pesanan Nasi Ayam Surplus Anda. Silakan ambil sebelum jam 18:00 WIB.',
+        time: '15 menit lalu',
+        type: 'order',
         unread: true,
       },
       {
-        id: 'notif-2',
-        title: 'Pesanan Dikonfirmasi',
-        message: 'Pesanan makanan Anda disetujui penjual. Silakan ambil di lokasi toko.',
-        time: '10:30 WIB',
+        id: 'notif-buyer-2',
+        title: 'Pesanan Siap Diambil',
+        message: 'Pesanan 2 porsi Tumis Sayur Organik Anda di Rumah Makan Nasi Gurih telah dikemas dan siap dijemput.',
+        time: '45 menit lalu',
         type: 'order',
         unread: true,
+      },
+      {
+        id: 'notif-buyer-3',
+        title: 'Update Menu Surplus Hemat 50%',
+        message: 'Resto Ayam Penyet Syiah Kuala baru saja menambahkan 5 porsi Nasi Goreng Surplus diskon 50%!',
+        time: '2 jam lalu',
+        type: 'promo',
+        unread: false,
+      },
+      {
+        id: 'notif-buyer-4',
+        title: 'Balasan Chat dari Penjual',
+        message: 'Warung Berkah Surplus: "Halo kak! Makanan masih hangat dan siap dijemput di lokasi toko."',
+        time: '11:15 WIB',
+        type: 'chat',
+        unread: false,
       },
     ]
   })
@@ -872,7 +864,9 @@ export default function PembeliDashboard() {
                           }`}
                         >
                           <div className="mt-0.5 rounded-full bg-white p-2 text-[#123d32] shadow-sm">
-                            {n.type === 'chat' ? <MessageSquare className="h-4 w-4 text-[#ee8d16]" /> : <ShoppingBag className="h-4 w-4 text-[#123d32]" />}
+                            {n.type === 'chat' && <MessageSquare className="h-4 w-4 text-[#ee8d16]" />}
+                            {n.type === 'order' && <ShoppingBag className="h-4 w-4 text-[#123d32]" />}
+                            {n.type === 'promo' && <Tag className="h-4 w-4 text-amber-500" />}
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center justify-between">

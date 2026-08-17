@@ -19,6 +19,7 @@ import {
   ShoppingBag,
   Send,
   Check,
+  Package,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { signOutUser } from '../lib/auth'
@@ -42,9 +43,70 @@ type SellerNotification = {
   title: string
   message: string
   time: string
-  type: 'order' | 'chat' | 'rating'
+  type: 'order' | 'pasokan' | 'chat' | 'rating' | 'dompet'
   unread: boolean
 }
+
+const getDefaultSellerNotifications = (): SellerNotification[] => [
+  {
+    id: 'notif-seller-1',
+    title: 'Pesanan Surplus Baru Diterima',
+    message: 'Pembeli Anisa memesan 2 porsi Nasi Ayam Surplus (Rp 30.000). Silakan konfirmasi penjemputan.',
+    time: '10 menit lalu',
+    type: 'order',
+    unread: true,
+  },
+  {
+    id: 'notif-seller-2',
+    title: 'Permintaan Pasokan Pakan Organik',
+    message: 'Peternak BSF Syiah Kuala mengajukan penjemputan 15 kg sisa makanan organik dapur.',
+    time: '30 menit lalu',
+    type: 'pasokan',
+    unread: true,
+  },
+  {
+    id: 'notif-seller-3',
+    title: 'Rating & Ulasan Pembeli',
+    message: 'Pembeli Budi memberikan ★ 5.0: "Makanan lezat, porsi melimpah & ramah lingkungan!"',
+    time: '2 jam lalu',
+    type: 'rating',
+    unread: false,
+  },
+  {
+    id: 'notif-seller-4',
+    title: 'Saldo Dompet Mitra Bertambah',
+    message: 'Pendapatan surplus sebesar Rp 120.000 telah berhasil ditambahkan ke saldo Dompet Mitra.',
+    time: 'Kemarin',
+    type: 'dompet',
+    unread: false,
+  },
+]
+
+const getDefaultSellerChats = (): BuyerChat[] => [
+  {
+    id: 'chat-seller-1',
+    buyerName: 'Anisa (Pembeli)',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop',
+    lastMessage: 'Halo kak, apakah pesanan Nasi Ayam Surplus saya bisa dijemput jam 5 sore?',
+    time: '10:15 WIB',
+    unread: true,
+    messages: [
+      { sender: 'buyer', text: 'Halo kak, apakah pesanan Nasi Ayam Surplus saya bisa dijemput jam 5 sore?', time: '10:15 WIB' },
+    ],
+  },
+  {
+    id: 'chat-seller-2',
+    buyerName: 'Rahmad (Peternak Maggot BSF)',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop',
+    lastMessage: 'Halo mitra resto, untuk sisa limbah organik dapur 15 kg sore ini siap diambil jam berapa?',
+    time: 'Kemarin',
+    unread: false,
+    messages: [
+      { sender: 'buyer', text: 'Halo mitra resto, untuk sisa limbah organik dapur 15 kg sore ini siap diambil jam berapa?', time: 'Kemarin' },
+      { sender: 'seller', text: 'Halo pak Rahmad, sisa organik sudah disortir dalam wadah khusus. Siap diambil pukul 16.30 WIB ya.', time: 'Kemarin' },
+    ],
+  },
+]
 
 export default function PenjualLayout({ children }: PenjualLayoutProps) {
   const location = useLocation()
@@ -100,8 +162,8 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
         .eq('penjual_id', session.user.id)
 
       if (!myPostings || myPostings.length === 0) {
-        setNotifications([])
-        setChats([])
+        setNotifications(getDefaultSellerNotifications())
+        setChats(getDefaultSellerChats())
         return
       }
 
@@ -158,7 +220,13 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
           }
         })
 
-        setNotifications(notifList)
+        // Merge with default role-specific seller notifications if list is small
+        if (notifList.length < 3) {
+          const defaults = getDefaultSellerNotifications().filter(d => !notifList.some(n => n.id === d.id))
+          setNotifications([...notifList, ...defaults])
+        } else {
+          setNotifications(notifList)
+        }
 
         // Dynamic Chats from DB + abis_global_chats from localStorage
         const chatList: BuyerChat[] = buyerIds.map((bId) => {
@@ -190,7 +258,7 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
           }
         })
 
-        // Merge chats with abis_global_chats
+        // Merge chats with abis_global_chats & defaults
         try {
           const rawGlobal = localStorage.getItem('abis_global_chats')
           if (rawGlobal) {
@@ -219,7 +287,7 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
 
         setChats(chatList)
       } else {
-        setNotifications([])
+        setNotifications(getDefaultSellerNotifications())
         // Fallback to load global chats if no orders
         try {
           const rawGlobal = localStorage.getItem('abis_global_chats')
@@ -244,6 +312,8 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
       }
     } catch (e) {
       console.warn('Real notifications load note:', e)
+      setNotifications(getDefaultSellerNotifications())
+      setChats([])
     }
   }
 
@@ -590,8 +660,10 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
                           >
                             <div className="mt-0.5 p-2 rounded-full bg-white shadow-sm shrink-0">
                               {n.type === 'order' && <ShoppingBag className="w-4 h-4 text-abisOrange" />}
-                              {n.type === 'chat' && <MessageSquare className="w-4 h-4 text-emerald-600" />}
+                              {n.type === 'pasokan' && <Package className="w-4 h-4 text-emerald-600" />}
+                              {n.type === 'chat' && <MessageSquare className="w-4 h-4 text-blue-600" />}
                               {n.type === 'rating' && <Star className="w-4 h-4 text-amber-500 fill-amber-500" />}
+                              {n.type === 'dompet' && <Wallet className="w-4 h-4 text-purple-600" />}
                             </div>
 
                             <div className="flex-1">

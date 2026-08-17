@@ -1,53 +1,99 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import PeternakLayout from '../../layouts/PeternakLayout'
-import { Link } from 'react-router-dom'
-import { MapPin, Search, SlidersHorizontal, Filter } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { MapPin, Search, SlidersHorizontal, Filter, Loader2, Package } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { resolveFoodImageUrl } from '../../lib/storage'
 
-const dummyNearby = [
-  {
-    id: 1,
-    store: 'Warteg Bahagia',
-    type: 'Sisa Sayuran',
-    weight: '5.0 kg',
-    distance: '1.1 km',
-    image: 'https://images.unsplash.com/photo-1595858682057-02488bc6ee05?w=200&h=200&fit=crop'
-  },
-  {
-    id: 2,
-    store: 'Ayam Bakar Taliwang',
-    type: 'Sisa Nasi & Tulang',
-    weight: '3.2 kg',
-    distance: '2.4 km',
-    image: 'https://images.unsplash.com/photo-1584269600519-112d06637ded?w=200&h=200&fit=crop'
-  },
-  {
-    id: 3,
-    store: 'Toko Roti Sedap',
-    type: 'Roti Kadaluarsa',
-    weight: '8.0 kg',
-    distance: '3.0 km',
-    image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&h=200&fit=crop'
-  },
-  {
-    id: 5,
-    store: 'Pasar Induk Sayur',
-    type: 'Sayur & Buah Afkir',
-    weight: '25.0 kg',
-    distance: '4.5 km',
-    image: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=200&h=200&fit=crop'
-  },
-  {
-    id: 6,
-    store: 'Warung Nasi Uduk',
-    type: 'Sisa Nasi',
-    weight: '2.5 kg',
-    distance: '1.8 km',
-    image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=200&h=200&fit=crop'
-  },
-]
+type ExplorePosting = {
+  id: string
+  penjual_id: string
+  nama_makanan: string
+  jumlah: number
+  foto_url: string | null
+  created_at: string
+  storeName: string
+  storeAddress: string
+}
 
 export default function PeternakExplore() {
-  const [search, setSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const initialQuery = searchParams.get('q') || ''
+  const [search, setSearch] = useState(initialQuery)
+  const [loading, setLoading] = useState(true)
+  const [postings, setPostings] = useState<ExplorePosting[]>([])
+
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q !== null) {
+      setSearch(q)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    const fetchExplorePostings = async () => {
+      setLoading(true)
+      try {
+        const { data: rawPostings, error } = await supabase
+          .from('postingan_makanan')
+          .select('id, penjual_id, nama_makanan, jumlah, foto_url, created_at')
+          .eq('status', 'tidak_layak_konsumsi')
+          .order('created_at', { ascending: false })
+
+        if (!error && rawPostings) {
+          const sellerIds = [...new Set(rawPostings.map((p) => p.penjual_id))]
+          let sellerMap = new Map<string, { nama_usaha: string; alamat: string }>()
+
+          if (sellerIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('id, nama_usaha, alamat')
+              .in('id', sellerIds)
+
+            if (profiles) {
+              profiles.forEach((prof: any) => {
+                sellerMap.set(prof.id, {
+                  nama_usaha: prof.nama_usaha || prof.name || 'Mitra Usaha',
+                  alamat: prof.alamat || 'Banda Aceh',
+                })
+              })
+            }
+          }
+
+          const formatted: ExplorePosting[] = rawPostings.map((p) => {
+            const seller = sellerMap.get(p.penjual_id) || {
+              nama_usaha: 'Mitra Resto/Warteg',
+              alamat: 'Banda Aceh',
+            }
+            return {
+              id: p.id,
+              penjual_id: p.penjual_id,
+              nama_makanan: p.nama_makanan,
+              jumlah: p.jumlah || 1,
+              foto_url: p.foto_url,
+              created_at: p.created_at,
+              storeName: seller.nama_usaha,
+              storeAddress: seller.alamat,
+            }
+          })
+          setPostings(formatted)
+        }
+      } catch (err) {
+        console.warn('Error fetching explore postings:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchExplorePostings()
+  }, [])
+
+  const filteredPostings = postings.filter(
+    (item) =>
+      item.nama_makanan.toLowerCase().includes(search.toLowerCase()) ||
+      item.storeName.toLowerCase().includes(search.toLowerCase()) ||
+      item.storeAddress.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
     <PeternakLayout>
@@ -73,7 +119,7 @@ export default function PeternakExplore() {
           </div>
         </div>
 
-        {/* MAP AREA (DUMMY) */}
+        {/* MAP AREA */}
         <div className="w-full h-72 lg:h-96 bg-slate-200 rounded-[2rem] overflow-hidden relative shadow-sm border border-slate-200">
           <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=1200&h=600&fit=crop" alt="Map View" className="w-full h-full object-cover" />
           
@@ -84,31 +130,48 @@ export default function PeternakExplore() {
           </div>
 
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-6 py-3 rounded-full shadow-lg font-bold text-sm text-abisGreen flex items-center gap-2 border border-green-100">
-            <MapPin className="w-4 h-4" /> Menampilkan 12 titik terdekat
+            <MapPin className="w-4 h-4" /> Menampilkan {filteredPostings.length} lokasi sisa makanan terdekat
           </div>
         </div>
 
         {/* LISTINGS */}
         <div className="pt-4">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Tersedia di Sekitar Anda</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {dummyNearby.map((item) => (
-              <Link to={`/peternak/detail/${item.id}`} key={item.id} className="bg-white rounded-[1.5rem] p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition group">
-                <img src={item.image} alt={item.type} className="w-24 h-24 rounded-xl object-cover" />
-                <div className="flex-1">
-                  <h3 className="font-bold text-slate-900 leading-tight group-hover:text-abisGreen transition text-lg mb-1">{item.store}</h3>
-                  <p className="text-sm text-slate-500 mb-3">{item.type}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-abisOrange bg-orange-50 px-3 py-1 rounded-full">{item.weight}</span>
-                    <span className="flex items-center text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1 rounded-full"><MapPin className="w-3 h-3 mr-1 text-slate-400" /> {item.distance}</span>
+
+          {loading ? (
+            <div className="bg-white rounded-[1.5rem] p-12 text-center border border-slate-100 flex items-center justify-center gap-3 text-abisGreen font-bold">
+              <Loader2 className="w-6 h-6 animate-spin" /> Memuat lokasi pakan organik...
+            </div>
+          ) : filteredPostings.length === 0 ? (
+            <div className="bg-white rounded-[1.5rem] p-12 text-center border border-slate-100 text-slate-500">
+              <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="font-bold text-slate-700">Tidak ada lokasi sisa makanan yang cocok dengan pencarian Anda.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredPostings.map((item) => (
+                <Link to={`/peternak/detail/${item.id}`} key={item.id} className="bg-white rounded-[1.5rem] p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition group">
+                  <img
+                    src={resolveFoodImageUrl(item.foto_url, 'https://images.unsplash.com/photo-1595858682057-02488bc6ee05?w=200&h=200&fit=crop')}
+                    alt={item.nama_makanan}
+                    className="w-24 h-24 rounded-xl object-cover"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-slate-900 leading-tight group-hover:text-abisGreen transition text-lg mb-1 truncate">{item.storeName}</h3>
+                    <p className="text-sm text-slate-500 mb-3 truncate">{item.nama_makanan}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-abisOrange bg-orange-50 px-3 py-1 rounded-full">{item.jumlah} Kg/Porsi</span>
+                      <span className="flex items-center text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1 rounded-full truncate max-w-[110px]"><MapPin className="w-3 h-3 mr-1 text-slate-400 shrink-0" /> {item.storeAddress}</span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
     </PeternakLayout>
   )
 }
+

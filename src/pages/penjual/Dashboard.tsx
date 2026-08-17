@@ -319,14 +319,18 @@ export default function PenjualDashboard() {
       let badgeStyle = 'bg-[#0e2718]/90 text-white'
       let desc = 'Postingan makanan aktif dari akun penjual Anda.'
 
-      if (isHabis) {
+      if (post.status === 'diambil_maggot') {
+        label = 'Sudah Diambil'
+        badgeStyle = 'bg-blue-700/90 text-white'
+        desc = 'Porsi sisa makanan organik ini sudah diambil oleh peternak maggot.'
+      } else if (isHabis) {
         label = 'Habis'
         badgeStyle = 'bg-amber-600/90 text-white'
         desc = 'Porsi makanan ini sudah habis dipesan oleh pembeli.'
-      } else if (isExpired) {
+      } else if (post.status === 'tidak_layak_konsumsi') {
         label = 'Tidak Layak'
         badgeStyle = 'bg-red-400/90 text-white'
-        desc = 'Postingan ini sudah tidak layak jual.'
+        desc = 'Postingan ini berstatus tidak layak konsumsi (Menunggu Peternak).'
       }
 
       const image = resolveFoodImageUrl(post.foto_url)

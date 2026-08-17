@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import PeternakLayout from '../../layouts/PeternakLayout'
 import {
   Bell,
   Camera,
@@ -32,49 +33,6 @@ interface RatingReview {
   review: string
 }
 
-const mockReviews: RatingReview[] = [
-  {
-    id: '1',
-    merchant: 'Warteg Bahagia',
-    date: '25 Juli 2026',
-    rating: 5,
-    review:
-      '“Sangat puas dengan layanannya. Makanannya enak dan harganya sangat terjangkau....”',
-  },
-  {
-    id: '2',
-    merchant: 'Warung Naspad',
-    date: '25 Juli 2026',
-    rating: 5,
-    review:
-      '“Sangat puas dengan layanannya. Makanannya enak dan harganya sangat terjangkau....”',
-  },
-  {
-    id: '3',
-    merchant: 'Warteg Bahagia',
-    date: '25 Juli 2026',
-    rating: 5,
-    review:
-      '“Sangat puas dengan layanannya. Makanannya enak dan harganya sangat terjangkau....”',
-  },
-  {
-    id: '4',
-    merchant: 'Kantin Berkah',
-    date: '22 Juli 2026',
-    rating: 5,
-    review:
-      '“Pelayanan cepat dan ramah, porsi melimpah. Sangat merekomendasikan!”',
-  },
-  {
-    id: '5',
-    merchant: 'Dapur Mama',
-    date: '18 Juli 2026',
-    rating: 4,
-    review:
-      '“Rasa lezat dan higienis. Pengiriman tepat waktu.”',
-  },
-]
-
 export default function PeternakProfil() {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -82,10 +40,21 @@ export default function PeternakProfil() {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [radiusValue, setRadiusValue] = useState(7)
-  const [pushNotification, setPushNotification] = useState(true)
-  const [twoFactorAuth, setTwoFactorAuth] = useState(false)
+  const [radiusValue, setRadiusValue] = useState<number>(() => {
+    return Number(localStorage.getItem('abis_peternak_radius')) || 7
+  })
+  const [pushNotification, setPushNotification] = useState<boolean>(() => {
+    const val = localStorage.getItem('abis_peternak_push_notif')
+    return val !== null ? val === 'true' : true
+  })
+  const [twoFactorAuth, setTwoFactorAuth] = useState<boolean>(() => {
+    const val = localStorage.getItem('abis_peternak_2fa')
+    return val !== null ? val === 'true' : false
+  })
   const [loading, setLoading] = useState(true)
+
+  // Real reviews list (starts empty if no merchant reviews exist yet)
+  const [reviewsList, setReviewsList] = useState<RatingReview[]>([])
 
   // Profile Data States (Connected to Supabase)
   const [profile, setProfile] = useState({
@@ -277,6 +246,7 @@ export default function PeternakProfil() {
   const togglePushNotif = () => {
     const nextState = !pushNotification
     setPushNotification(nextState)
+    localStorage.setItem('abis_peternak_push_notif', String(nextState))
     showToast(
       nextState
         ? 'Notifikasi Push diaktifkan!'
@@ -287,11 +257,17 @@ export default function PeternakProfil() {
   const toggle2FA = () => {
     const nextState = !twoFactorAuth
     setTwoFactorAuth(nextState)
+    localStorage.setItem('abis_peternak_2fa', String(nextState))
     showToast(
       nextState
         ? 'Autentikasi Dua Faktor (2FA) diaktifkan!'
         : 'Autentikasi Dua Faktor (2FA) dinonaktifkan.'
     )
+  }
+
+  const handleRadiusChange = (val: number) => {
+    setRadiusValue(val)
+    localStorage.setItem('abis_peternak_radius', String(val))
   }
 
   const sidebarNavItems = [
@@ -301,197 +277,36 @@ export default function PeternakProfil() {
     { name: 'Profil', path: '/peternak/profil', icon: UserRound, active: true },
   ]
 
-  const displayedReviews = showAllRatings ? mockReviews : mockReviews.slice(0, 3)
+  const displayedReviews = showAllRatings ? reviewsList : reviewsList.slice(0, 3)
 
   return (
-    <div className="min-h-screen bg-[#123c2f] font-hanken relative">
-      {/* Hidden File Input for Direct Upload */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handlePhotoUpload}
-        accept="image/*"
-        className="hidden"
-      />
+    <PeternakLayout>
+      <div className="font-hanken relative max-w-5xl mx-auto space-y-6">
+        {/* Hidden File Input for Direct Upload */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handlePhotoUpload}
+          accept="image/*"
+          className="hidden"
+        />
 
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-3 rounded-2xl bg-[#0b3c2d] px-5 py-3.5 text-white shadow-xl border border-white/20 animate-bounce">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white">
-            <Check className="h-4 w-4" />
+        {/* Toast Notification Banner */}
+        {toastMessage && (
+          <div className="fixed top-5 right-5 z-50 flex items-center gap-3 rounded-2xl bg-[#0b3c2d] px-5 py-3.5 text-white shadow-xl border border-white/20 animate-bounce">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Check className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-semibold">{toastMessage}</span>
           </div>
-          <span className="text-sm font-semibold">{toastMessage}</span>
+        )}
+
+        <div>
+          <h1 className="font-literata text-2xl sm:text-3xl font-bold text-[#123d32] mb-2">
+            Profil & Pengaturan
+          </h1>
+          <p className="text-slate-500 text-sm">Kelola informasi profil, lokasi penjemputan, dan preferensi akun Anda.</p>
         </div>
-      )}
-
-      <div className="flex min-h-screen flex-col lg:flex-row">
-        {/* Sidebar Peternak */}
-        <aside className="w-full bg-[#123c2f] lg:sticky lg:top-0 lg:h-screen lg:w-[260px] lg:shrink-0 lg:flex lg:flex-col lg:justify-between lg:py-8">
-          <div>
-            <div className="flex items-center justify-between px-5 py-4 lg:px-8 lg:py-0">
-              <Link to="/" className="block">
-                <img
-                  src="/images/Logo sidebar.png"
-                  alt="Abis.in"
-                  className="h-10 w-auto object-contain lg:h-16"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                    const parent = e.currentTarget.parentElement
-                    if (parent && !parent.querySelector('.logo-fallback')) {
-                      const fallback = document.createElement('div')
-                      fallback.className =
-                        'logo-fallback flex items-center gap-2 text-lg font-bold font-literata text-white'
-                      fallback.innerHTML = `<span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1b4332] text-sm">🌱</span> abis.in`
-                      parent.appendChild(fallback)
-                    }
-                  }}
-                />
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white lg:hidden hover:bg-white/10 transition"
-                aria-label="Toggle menu"
-              >
-                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </button>
-            </div>
-
-            <nav
-              className={`${
-                mobileMenuOpen ? 'flex' : 'hidden'
-              } flex-col gap-2 pb-4 pt-2 lg:flex lg:pb-0 lg:pt-0`}
-            >
-              {sidebarNavItems.map((item) => (
-                <button
-                  key={item.name}
-                  type="button"
-                  onClick={() => {
-                    setMobileMenuOpen(false)
-                    navigate(item.path)
-                  }}
-                  className={`flex items-center gap-3 py-3.5 font-semibold transition-colors ${
-                    item.active
-                      ? 'ml-3 rounded-l-[2rem] bg-[#F8F9EB] pl-5 text-abisGreen lg:ml-6 lg:pl-6'
-                      : 'ml-3 rounded-l-[2rem] pl-5 text-white hover:bg-white/5 lg:ml-6 lg:pl-6'
-                  }`}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.name}
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          <div
-            className={`${
-              mobileMenuOpen ? 'flex' : 'hidden'
-            } flex-col gap-3 px-5 pb-6 lg:flex lg:px-8 lg:pb-0`}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setMobileMenuOpen(false)
-                setIsHelpModalOpen(true)
-              }}
-              className="flex items-center gap-3 py-2 text-left font-semibold text-white transition hover:text-abisOrange"
-            >
-              <HelpCircle className="h-5 w-5" />
-              Bantuan
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMobileMenuOpen(false)
-                handleLogout()
-              }}
-              className="flex items-center gap-3 py-2 text-left font-semibold text-white transition hover:text-red-400"
-            >
-              <LogOut className="h-5 w-5" />
-              Keluar
-            </button>
-          </div>
-        </aside>
-
-        {/* Main Content Area */}
-        <main className="flex-1 bg-[#f5f3e8] p-4 sm:p-6 lg:p-10 lg:h-screen lg:overflow-y-auto">
-          <div className="mx-auto max-w-5xl">
-            {/* Top Header Row */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-              <div className="flex-1">
-                <h1 className="font-literata text-2xl sm:text-3xl lg:text-4xl font-bold text-[#123d32]">
-                  Profil & Pengaturan
-                </h1>
-
-                {/* Search Box */}
-                <div className="mt-3 flex items-center gap-2.5 rounded-full bg-[#efede2] border border-[#e2dfd2] px-4 py-2 w-full sm:max-w-sm shadow-inner">
-                  <Search className="h-4 w-4 text-gray-500 shrink-0" />
-                  <input
-                    type="text"
-                    placeholder="Cari Transaksi . . ."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-transparent text-sm text-[#123d32] placeholder-gray-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* User Profile Bar */}
-              <div className="flex items-center justify-between sm:justify-end gap-3 rounded-2xl bg-white/60 p-2 sm:bg-transparent sm:p-0 relative">
-                <div className="flex items-center gap-3">
-                  {profile.fotoUrl ? (
-                    <img
-                      src={profile.fotoUrl}
-                      alt={profile.nama}
-                      className="h-10 w-10 rounded-full object-cover shrink-0 border border-[#123d32]/20"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-[#d5d5d5] flex-shrink-0 flex items-center justify-center font-bold text-[#123d32]">
-                      {profile.nama.substring(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="text-left sm:text-right">
-                    <p className="font-bold text-sm text-[#123d32]">{profile.nama}</p>
-                    <p className="text-xs text-gray-500 font-medium">{profile.role}</p>
-                  </div>
-                </div>
-
-                {/* Bell Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="p-2 text-[#123d32] hover:bg-black/5 rounded-full transition ml-auto sm:ml-0 relative"
-                  title="Notifikasi"
-                >
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
-                </button>
-
-                {/* Notification Dropdown Modal */}
-                {isNotifOpen && (
-                  <div className="absolute top-14 right-0 z-40 w-72 rounded-2xl bg-white p-4 shadow-xl border border-black/5 text-left">
-                    <div className="flex items-center justify-between border-b pb-2 mb-2">
-                      <h4 className="font-bold text-sm text-[#123d32]">Notifikasi</h4>
-                      <button
-                        onClick={() => setIsNotifOpen(false)}
-                        className="text-xs text-gray-400 hover:text-gray-600"
-                      >
-                        Tutup
-                      </button>
-                    </div>
-                    <div className="space-y-2.5 text-xs text-gray-600">
-                      <p className="p-2 rounded-lg bg-emerald-50 text-[#0b3c2d]">
-                        🌱 Transaksi pesanan pasokan pakan berhasil dikonfirmasi!
-                      </p>
-                      <p className="p-2 rounded-lg bg-gray-50">
-                        ⭐ Anda menerima 1 ulasan bintang 5 baru dari Warteg Bahagia.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* Profile Detail Cards Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 my-6">
@@ -592,7 +407,7 @@ export default function PeternakProfil() {
                         value={radiusValue}
                         onChange={(e) => {
                           const val = Number(e.target.value)
-                          setRadiusValue(val)
+                          handleRadiusChange(val)
                         }}
                         className="w-full h-2 bg-[#e2e8f0] rounded-lg appearance-none cursor-pointer accent-[#0b3c2d]"
                       />
@@ -691,43 +506,48 @@ export default function PeternakProfil() {
 
               {/* Review Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mt-5">
-                {displayedReviews.map((rev) => (
-                  <div
-                    key={rev.id}
-                    onClick={() => showToast(`Ulasan dari ${rev.merchant}`)}
-                    className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition cursor-pointer"
-                  >
-                    <div>
-                      {/* User Header */}
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-[#d5d5d5] shrink-0 flex items-center justify-center font-bold text-[#123d32] text-xs">
-                          {rev.merchant.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-[#b85b46]">{rev.merchant}</p>
-                          <p className="text-xs text-gray-400">{rev.date}</p>
-                        </div>
-                      </div>
-
-                      {/* Rating Stars */}
-                      <div className="flex items-center gap-1 text-[#b85b46] mb-3">
-                        {[...Array(rev.rating)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-current text-[#b85b46]" />
-                        ))}
-                      </div>
-
-                      {/* Review Comment */}
-                      <p className="text-xs text-gray-600 font-sans leading-relaxed">
-                        {rev.review}
-                      </p>
-                    </div>
+                {displayedReviews.length === 0 ? (
+                  <div className="col-span-full bg-white rounded-2xl p-8 text-center border border-black/5 text-gray-500">
+                    <p className="text-sm font-semibold text-[#123d32]">Belum Ada Ulasan</p>
+                    <p className="text-xs text-gray-400 mt-1">Ulasan dan rating dari mitra usaha tempat Anda mengumpulkan pakan akan tampil di sini.</p>
                   </div>
-                ))}
+                ) : (
+                  displayedReviews.map((rev) => (
+                    <div
+                      key={rev.id}
+                      onClick={() => showToast(`Ulasan dari ${rev.merchant}`)}
+                      className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-black/5 flex flex-col justify-between hover:shadow-md transition cursor-pointer"
+                    >
+                      <div>
+                        {/* User Header */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 rounded-full bg-[#d5d5d5] shrink-0 flex items-center justify-center font-bold text-[#123d32] text-xs">
+                            {rev.merchant.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-[#b85b46]">{rev.merchant}</p>
+                            <p className="text-xs text-gray-400">{rev.date}</p>
+                          </div>
+                        </div>
+
+                        {/* Rating Stars */}
+                        <div className="flex items-center gap-1 text-[#b85b46] mb-3">
+                          {[...Array(rev.rating)].map((_, i) => (
+                            <Star key={i} className="w-4 h-4 fill-current text-[#b85b46]" />
+                          ))}
+                        </div>
+
+                        {/* Review Comment */}
+                        <p className="text-xs text-gray-600 font-sans leading-relaxed">
+                          {rev.review}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
-        </main>
-      </div>
 
       {/* Edit Profile Modal (with Photo Upload & Supabase Integration) */}
       {isEditModalOpen && (
@@ -914,6 +734,6 @@ export default function PeternakProfil() {
           </div>
         </div>
       )}
-    </div>
+    </PeternakLayout>
   )
 }
