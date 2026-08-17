@@ -1,23 +1,13 @@
-# Abis.in
+Abis.in
 
-Proyek React + Vite + TypeScript untuk platform Abis.in.
+Universitas Syiah Kuala
 
-## Teknologi
-- React
-- Vite
-- TypeScript
-- Tailwind CSS
-- React Router
-- Zustand
-- Supabase (Auth, Database, Storage)
-- Leaflet.js
+Anggota Tim:
+- Ketua       : Bunga Rasikhah Haya
+- Anggota 1   : Anisa Ramadhani
+- Anggota 2   : Akrimah Usri
 
-## Setup
-1. Jalankan `npm install`
-2. Jalankan `npm run dev`
+Deskripsi Karya
 
-## Struktur
-- `src/lib/supabase.ts` untuk inisialisasi Supabase
-- `src/pages` untuk halaman per role
-- `src/components` untuk komponen bersama
-- `supabase/schema.sql` untuk skema database dan RLS
+Link Deploy Sistem
+
