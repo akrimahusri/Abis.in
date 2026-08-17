@@ -1,17 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PenjualLayout from '../../layouts/PenjualLayout'
-import { Wallet, Clock, Edit2, Trash2, AlertTriangle, ChevronRight, Plus, Check, X, RefreshCw } from 'lucide-react'
+import { Wallet, Clock, Edit2, Trash2, AlertTriangle, ChevronRight, Plus, Check, X, RefreshCw, ShoppingBag, CheckCircle2, XCircle, User, Phone, CheckCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { getFoodImageUrl } from '../../lib/storage'
+import { getFoodImageUrl, resolveFoodImageUrl, DEFAULT_FOOD_IMAGE } from '../../lib/storage'
 
 type PostingItem = {
   id: string
   nama_makanan: string
   harga: number
   status: string
+  jumlah: number | null
   batas_waktu_ambil: string | null
   foto_url: string | null
+}
+
+type SellerOrderItem = {
+  id: string
+  postinganId: string
+  buyerId: string
+  buyerName: string
+  buyerPhone: string
+  foodTitle: string
+  price: number
+  fotoUrl: string | null
+  status: 'menunggu' | 'terkonfirmasi' | 'selesai' | 'dibatalkan'
+  createdAt: string
 }
 
 export default function PenjualDashboard() {
@@ -19,6 +33,11 @@ export default function PenjualDashboard() {
   const [posts, setPosts] = useState<PostingItem[]>([])
   const [loadingPosts, setLoadingPosts] = useState(true)
   
+  // Orders State
+  const [incomingOrders, setIncomingOrders] = useState<SellerOrderItem[]>([])
+  const [orderTab, setOrderTab] = useState<'Semua' | 'Menunggu' | 'Terkonfirmasi' | 'Selesai'>('Semua')
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+
   // Toast & Delete Modal states
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
@@ -42,18 +61,20 @@ export default function PenjualDashboard() {
 
     if (!session?.user) {
       setPosts([])
+      setIncomingOrders([])
       setLoadingPosts(false)
       return
     }
 
     const { data, error } = await supabase
       .from('postingan_makanan')
-      .select('id, nama_makanan, harga, status, batas_waktu_ambil, foto_url')
+      .select('id, nama_makanan, harga, status, jumlah, batas_waktu_ambil, foto_url')
       .eq('penjual_id', session.user.id)
       .order('created_at', { ascending: false })
 
     if (error || !data) {
       setPosts([])
+      setIncomingOrders([])
     } else {
       setPosts(data as PostingItem[])
 
@@ -61,18 +82,83 @@ export default function PenjualDashboard() {
       if (postingIds.length > 0) {
         const { data: txs } = await supabase
           .from('transaksi_pembelian')
-          .select('id, postingan_id, status')
+          .select('id, postingan_id, pembeli_id, status, created_at')
           .in('postingan_id', postingIds)
+          .order('created_at', { ascending: false })
 
-        if (txs) {
-          const postingMap = new Map(data.map((p) => [p.id, Number(p.harga || 0)]))
+        if (txs && txs.length > 0) {
+          const postingMap = new Map(data.map((p) => [p.id, p]))
+          const buyerIds = [...new Set(txs.map((t) => t.pembeli_id).filter(Boolean))]
+
+          let buyerProfilesMap = new Map()
+          if (buyerIds.length > 0) {
+            const { data: buyers } = await supabase
+              .from('profiles')
+              .select('id, name, email, telepon')
+              .in('id', buyerIds)
+
+            if (buyers) {
+              buyerProfilesMap = new Map(buyers.map((b) => [b.id, b]))
+            }
+          }
+
+          const mappedOrders: SellerOrderItem[] = txs.map((tx) => {
+            const posting = postingMap.get(tx.postingan_id)
+            const buyer = buyerProfilesMap.get(tx.pembeli_id)
+
+            return {
+              id: tx.id,
+              postinganId: tx.postingan_id,
+              buyerId: tx.pembeli_id,
+              buyerName: buyer?.name || buyer?.email?.split('@')[0] || 'Pembeli Abis.in',
+              buyerPhone: buyer?.telepon || '-',
+              foodTitle: posting?.nama_makanan || 'Makanan Surplus',
+              price: Number(posting?.harga || 0),
+              fotoUrl: posting?.foto_url || null,
+              status: (tx.status as any) || 'menunggu',
+              createdAt: new Date(tx.created_at).toLocaleString('id-ID', {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            }
+          })
+
+          setIncomingOrders(mappedOrders)
+
           const income = txs.reduce((acc, curr) => {
             if (curr.status === 'selesai') {
-              return acc + (postingMap.get(curr.postingan_id) || 0)
+              const p = postingMap.get(curr.postingan_id)
+              return acc + Number(p?.harga || 0)
             }
             return acc
           }, 0)
           setTotalIncome(income)
+
+          // Auto-sync status 'habis' for postings whose active orders equal or exceed posted stock
+          const activeOrderCounts = new Map<string, number>()
+          mappedOrders.forEach((o) => {
+            if (o.status !== 'dibatalkan') {
+              activeOrderCounts.set(o.postinganId, (activeOrderCounts.get(o.postinganId) || 0) + 1)
+            }
+          })
+
+          for (const post of data) {
+            const ordered = activeOrderCounts.get(post.id) || 0
+            if (ordered > 0 && post.status !== 'habis' && post.status !== 'tidak_layak_konsumsi') {
+              const remStock = Math.max(0, (post.jumlah ?? 0) - ordered)
+              const updatedStatus = remStock <= 0 ? 'habis' : post.status
+              if (updatedStatus === 'habis' || remStock !== post.jumlah) {
+                await supabase
+                  .from('postingan_makanan')
+                  .update({ jumlah: remStock, status: updatedStatus })
+                  .eq('id', post.id)
+              }
+            }
+          }
+        } else {
+          setIncomingOrders([])
         }
       }
     }
@@ -83,6 +169,33 @@ export default function PenjualDashboard() {
   useEffect(() => {
     fetchPosts()
   }, [])
+
+  // Update Order Status Handler
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: 'terkonfirmasi' | 'selesai' | 'dibatalkan') => {
+    setUpdatingOrderId(orderId)
+    try {
+      const { error } = await supabase
+        .from('transaksi_pembelian')
+        .update({ status: newStatus })
+        .eq('id', orderId)
+
+      if (error) {
+        showToast(`Gagal memproses status: ${error.message}`)
+      } else {
+        const messages = {
+          terkonfirmasi: 'Pesanan berhasil disetujui! Pembeli dapat mengambil makanan.',
+          selesai: 'Pesanan telah diselesaikan & diambil pembeli.',
+          dibatalkan: 'Pesanan telah dibatalkan.',
+        }
+        showToast(messages[newStatus])
+        await fetchPosts()
+      }
+    } catch (err: any) {
+      showToast('Terjadi kesalahan saat memperbarui status pesanan.')
+    } finally {
+      setUpdatingOrderId(null)
+    }
+  }
 
   // Delete Post Handler
   const handleConfirmDelete = async () => {
@@ -98,7 +211,6 @@ export default function PenjualDashboard() {
         return
       }
 
-      // 1. Attempt cleanup on associated records (if RLS allows)
       await supabase
         .from('transaksi_pembelian')
         .delete()
@@ -109,7 +221,6 @@ export default function PenjualDashboard() {
         .delete()
         .eq('postingan_id', deleteTarget.id)
 
-      // 2. Delete posting record with .select() to verify PostgreSQL DB deletion
       const { data, error } = await supabase
         .from('postingan_makanan')
         .delete()
@@ -119,7 +230,6 @@ export default function PenjualDashboard() {
       if (error) {
         showToast(`Gagal menghapus dari database: ${error.message}`)
       } else if (!data || data.length === 0) {
-        // Fallback 1: Try deleting with seller ID match
         const { data: fbData, error: fbErr } = await supabase
           .from('postingan_makanan')
           .delete()
@@ -127,7 +237,6 @@ export default function PenjualDashboard() {
           .select()
 
         if (fbErr || !fbData || fbData.length === 0) {
-          // Fallback 2: If hard delete is blocked by DB foreign key constraint, update status so it doesn't appear
           const { error: updateErr } = await supabase
             .from('postingan_makanan')
             .update({ status: 'diambil_maggot' })
@@ -140,7 +249,6 @@ export default function PenjualDashboard() {
         }
       }
 
-      // 3. Always re-fetch directly from Supabase DB to guarantee UI state matches DB 100%
       await fetchPosts()
       showToast(`Postingan "${deleteTarget.title || 'Makanan'}" berhasil dihapus permanen.`)
     } catch (err: any) {
@@ -158,7 +266,6 @@ export default function PenjualDashboard() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        // Fetch all seller posting IDs
         const { data: myPosts } = await supabase
           .from('postingan_makanan')
           .select('id')
@@ -195,22 +302,60 @@ export default function PenjualDashboard() {
     }
 
     return posts.map((post, index) => {
+      const activeOrders = incomingOrders.filter(
+        (o) => o.postinganId === post.id && o.status !== 'dibatalkan'
+      ).length
+      const initialStock = post.jumlah ?? 0
+      const remainingStock = Math.max(0, initialStock - activeOrders)
+
+      const isHabis =
+        (post.jumlah !== null && post.jumlah <= 0) ||
+        post.status === 'habis' ||
+        remainingStock <= 0
+
       const isExpired = post.status === 'tidak_layak_konsumsi' || post.status === 'diambil_maggot'
-      const label = isExpired ? 'Tidak Layak' : 'Layak Jual'
-      const image = post.foto_url ? (post.foto_url.startsWith('http') ? post.foto_url : getFoodImageUrl(post.foto_url)) : 'https://images.unsplash.com/photo-1548943487-a2e4e43b4859?w=500&h=400&fit=crop'
+
+      let label = 'Layak Jual'
+      let badgeStyle = 'bg-[#0e2718]/90 text-white'
+      let desc = 'Postingan makanan aktif dari akun penjual Anda.'
+
+      if (isHabis) {
+        label = 'Habis'
+        badgeStyle = 'bg-amber-600/90 text-white'
+        desc = 'Porsi makanan ini sudah habis dipesan oleh pembeli.'
+      } else if (isExpired) {
+        label = 'Tidak Layak'
+        badgeStyle = 'bg-red-400/90 text-white'
+        desc = 'Postingan ini sudah tidak layak jual.'
+      }
+
+      const image = resolveFoodImageUrl(post.foto_url)
 
       return {
         id: post.id,
         title: post.nama_makanan,
         price: Number(post.harga) || 0,
-        desc: isExpired ? 'Postingan ini sudah tidak layak jual.' : 'Postingan makanan aktif dari akun penjual Anda.',
+        desc,
         image,
         status: label,
+        badgeStyle,
+        isHabis,
+        remainingStock,
         timeLeft: post.batas_waktu_ambil ? `Sampai ${new Date(post.batas_waktu_ambil).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}` : `${index + 1} jam`,
-        expired: isExpired,
+        expired: isExpired || isHabis,
       }
     })
-  }, [posts])
+  }, [posts, incomingOrders])
+
+  const filteredOrders = useMemo(() => {
+    if (orderTab === 'Semua') return incomingOrders
+    if (orderTab === 'Menunggu') return incomingOrders.filter((o) => o.status === 'menunggu')
+    if (orderTab === 'Terkonfirmasi') return incomingOrders.filter((o) => o.status === 'terkonfirmasi')
+    if (orderTab === 'Selesai') return incomingOrders.filter((o) => o.status === 'selesai')
+    return incomingOrders
+  }, [incomingOrders, orderTab])
+
+  const pendingCount = useMemo(() => incomingOrders.filter((o) => o.status === 'menunggu').length, [incomingOrders])
 
   const goToPostingForm = () => {
     navigate('/penjual/postingan')
@@ -285,6 +430,38 @@ export default function PenjualDashboard() {
           </div>
         </div>
 
+        {/* BANNER ACCESS TO SELLER ORDERS PAGE */}
+        <section className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-3xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white font-bold shadow-sm shrink-0">
+              <ShoppingBag className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-literata text-lg font-bold text-amber-950">Konfirmasi Pesanan Pembeli</h3>
+                {pendingCount > 0 && (
+                  <span className="rounded-full bg-red-500 px-3 py-0.5 text-xs font-extrabold text-white shadow-sm animate-pulse">
+                    {pendingCount} Menunggu Konfirmasi
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-amber-800 mt-1">
+                {pendingCount > 0
+                  ? `Ada ${pendingCount} pesanan baru dari pembeli yang menunggu persetujuan Anda.`
+                  : 'Kelola seluruh pesanan masuk dan status penjemputan makanan surplus di halaman khusus.'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/penjual/pesanan')}
+            className="w-full sm:w-auto rounded-full bg-abisGreen px-6 py-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-900 transition flex items-center justify-center gap-2 shrink-0"
+          >
+            Buka Halaman Pesanan <ChevronRight className="w-4 h-4" />
+          </button>
+        </section>
+
         <div>
           <div className="mb-6 flex items-center justify-between">
             <h2 className="font-literata text-2xl font-bold text-abisGreen">Postingan Akhir Anda</h2>
@@ -310,13 +487,15 @@ export default function PenjualDashboard() {
                   <img
                     src={post.image}
                     alt={post.title}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null
+                      e.currentTarget.src = DEFAULT_FOOD_IMAGE
+                    }}
                     className={`h-full w-full object-cover transition duration-300 ${post.expired ? 'grayscale opacity-80' : 'group-hover:scale-105'}`}
                   />
                   <div className="absolute right-4 top-4 z-10">
                     <span
-                      className={`rounded-full px-4 py-1.5 text-xs font-bold shadow-sm backdrop-blur-md ${
-                        post.status === 'Layak Jual' ? 'bg-[#0e2718]/90 text-white' : 'bg-red-400/90 text-white'
-                      }`}
+                      className={`rounded-full px-4 py-1.5 text-xs font-bold shadow-sm backdrop-blur-md ${post.badgeStyle}`}
                     >
                       {post.status}
                     </span>

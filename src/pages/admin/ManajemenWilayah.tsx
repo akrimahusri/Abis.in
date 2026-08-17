@@ -312,10 +312,10 @@ export default function ManajemenWilayah() {
 
         {/* MAIN LAYOUT: HIERARCHY NAVIGATION & DISTRICT LIST */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
+
           {/* LEFT PANEL: PROVINCE & CITY SELECTOR */}
           <div className="lg:col-span-4 space-y-6">
-            
+
             {/* PROVINCE PICKER */}
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
               <h3 className="font-literata font-bold text-lg text-abisGreen border-b border-slate-100 pb-3 flex items-center justify-between">
@@ -333,11 +333,10 @@ export default function ManajemenWilayah() {
                         setSelectedProvId(prov.id)
                         setSelectedCityId(prov.cities[0]?.id || '')
                       }}
-                      className={`p-3.5 rounded-2xl cursor-pointer border transition flex items-center justify-between ${
-                        isSelected
+                      className={`p-3.5 rounded-2xl cursor-pointer border transition flex items-center justify-between ${isSelected
                           ? 'bg-[#123c2f] text-white border-[#123c2f] shadow-md'
                           : 'bg-[#fbf9f3] text-slate-800 border-slate-200 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <MapPin className={`w-4 h-4 ${isSelected ? 'text-abisOrange' : 'text-slate-400'}`} />
@@ -351,13 +350,12 @@ export default function ManajemenWilayah() {
                             e.stopPropagation()
                             toggleProvinceStatus(prov.id)
                           }}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase transition ${
-                            prov.active
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase transition ${prov.active
                               ? isSelected
                                 ? 'bg-emerald-500 text-white'
                                 : 'bg-emerald-100 text-emerald-800'
                               : 'bg-slate-200 text-slate-600'
-                          }`}
+                            }`}
                         >
                           {prov.active ? 'Aktif' : 'Non-aktif'}
                         </button>
@@ -383,11 +381,10 @@ export default function ManajemenWilayah() {
                     <div
                       key={city.id}
                       onClick={() => setSelectedCityId(city.id)}
-                      className={`p-3.5 rounded-2xl cursor-pointer border transition flex items-center justify-between ${
-                        isSelected
+                      className={`p-3.5 rounded-2xl cursor-pointer border transition flex items-center justify-between ${isSelected
                           ? 'bg-abisOrange text-white border-abisOrange shadow-md'
                           : 'bg-[#fbf9f3] text-slate-800 border-slate-200 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <Building2 className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-400'}`} />
@@ -401,13 +398,12 @@ export default function ManajemenWilayah() {
                             e.stopPropagation()
                             toggleCityStatus(city.id)
                           }}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase transition ${
-                            city.active
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase transition ${city.active
                               ? isSelected
                                 ? 'bg-slate-900 text-white'
                                 : 'bg-emerald-100 text-emerald-800'
                               : 'bg-slate-200 text-slate-600'
-                          }`}
+                            }`}
                         >
                           {city.active ? 'Aktif' : 'Non-aktif'}
                         </button>
@@ -424,7 +420,7 @@ export default function ManajemenWilayah() {
           {/* RIGHT PANEL: DISTRICT MANAGEMENT & TOGGLE EXPANSION */}
           <div className="lg:col-span-8 space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-              
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-bold text-abisOrange uppercase">
@@ -453,11 +449,10 @@ export default function ManajemenWilayah() {
                 {filteredDistricts.map((district) => (
                   <div
                     key={district.id}
-                    className={`p-4 rounded-2xl border transition flex flex-col justify-between space-y-4 ${
-                      district.active
+                    className={`p-4 rounded-2xl border transition flex flex-col justify-between space-y-4 ${district.active
                         ? 'bg-white border-emerald-200 shadow-sm'
                         : 'bg-[#faf9f5] border-slate-200 opacity-80'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -466,11 +461,10 @@ export default function ManajemenWilayah() {
                       </div>
 
                       <span
-                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
-                          district.active
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${district.active
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                             : 'bg-slate-200 text-slate-600'
-                        }`}
+                          }`}
                       >
                         {district.active ? 'Beroperasi' : 'Belum Aktif'}
                       </span>
@@ -490,11 +484,10 @@ export default function ManajemenWilayah() {
                     {/* TOGGLE EXPANSION BUTTON */}
                     <button
                       onClick={() => toggleDistrictStatus(district.id)}
-                      className={`w-full py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 ${
-                        district.active
+                      className={`w-full py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 ${district.active
                           ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100'
                           : 'bg-abisGreen text-white hover:bg-[#0e2718] shadow-sm'
-                      }`}
+                        }`}
                     >
                       <Power className="w-3.5 h-3.5" />
                       {district.active ? 'Non-aktifkan Wilayah Ini' : 'Aktifkan Layanan di Kecamatan Ini'}

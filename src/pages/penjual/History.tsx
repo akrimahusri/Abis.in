@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowDownLeft, ChevronRight, Wallet } from 'lucide-react'
 import PenjualLayout from '../../layouts/PenjualLayout'
 import { supabase } from '../../lib/supabase'
+import { resolveFoodImageUrl, DEFAULT_FOOD_IMAGE } from '../../lib/storage'
 
 type TransactionItem = {
   date: string
@@ -76,7 +77,7 @@ export default function PenjualHistory() {
               type: 'Penjualan',
               amount: `+ Rp ${harga.toLocaleString('id-ID')}`,
               status: tx.status === 'selesai' ? 'Selesai' : tx.status === 'dibatalkan' ? 'Dibatalkan' : 'Proses',
-              fotoUrl: p?.foto_url || 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=120&h=120&fit=crop',
+              fotoUrl: resolveFoodImageUrl(p?.foto_url, 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=120&h=120&fit=crop'),
             }
           })
 
@@ -166,6 +167,10 @@ export default function PenjualHistory() {
                       <img
                         src={item.fotoUrl}
                         alt={item.item}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null
+                          e.currentTarget.src = DEFAULT_FOOD_IMAGE
+                        }}
                         className="h-full w-full object-cover"
                       />
                     </div>

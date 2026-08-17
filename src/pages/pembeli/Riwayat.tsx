@@ -3,6 +3,7 @@ import { Bell, ChevronRight, Clock3, HelpCircle, Home, LogOut, Search, ShoppingB
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { signOutUser } from '../../lib/auth'
+import { resolveFoodImageUrl, DEFAULT_FOOD_IMAGE } from '../../lib/storage'
 import { buyerContentClass, buyerPageTitleClass, buyerSidebarClass } from './styles'
 
 const sidebarItems = [
@@ -113,26 +114,25 @@ export default function PembeliRiwayat() {
       const postingMap = new Map<string, PostingRow>((postingRows ?? []).map((item) => [item.id, item as PostingRow]))
       const sellerMap = new Map(sellerProfiles.map((item) => [item.id, item]))
 
-      const mappedTransactions = typedTransactions.map((transaction, index) => {
+      const mappedTransactions: TransactionItem[] = typedTransactions.map((transaction, index) => {
         const posting = postingMap.get(transaction.postingan_id)
         const seller = posting ? sellerMap.get(posting.penjual_id) : null
+
+        const status: TransactionItem['status'] =
+          transaction.status === 'selesai'
+            ? 'Selesai'
+            : transaction.status === 'dibatalkan'
+              ? 'Dibatalkan'
+              : 'Menunggu'
 
         return {
           id: index + 1,
           title: posting?.nama_makanan || 'Pesanan tanpa nama',
           seller: seller?.nama_usaha || seller?.email?.split('@')[0] || 'Penjual',
-          status:
-            transaction.status === 'selesai'
-              ? 'Selesai'
-              : transaction.status === 'dibatalkan'
-                ? 'Dibatalkan'
-                : 'Menunggu',
+          status,
           total: Number(posting?.harga ?? 0),
           date: formatTransactionDate(transaction.created_at),
-          image:
-            posting?.foto_url?.startsWith('http')
-              ? posting.foto_url
-              : 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=300&q=80',
+          image: resolveFoodImageUrl(posting?.foto_url, 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=300&q=80'),
         }
       })
 
@@ -263,7 +263,15 @@ export default function PembeliRiwayat() {
               <div className="mt-6 space-y-4">
                 {filteredTransactions.map((item) => (
                   <article key={item.id} className="flex flex-col gap-4 rounded-[1.25rem] bg-white p-4 shadow-[0_8px_18px_rgba(18,61,50,0.08)] md:flex-row md:items-center">
-                    <img src={item.image} alt={item.title} className="h-[120px] w-[120px] rounded-[1rem] object-cover" />
+                    <img
+                      src={item.image}
+                      alt={item.title}
+                      onError={(e) => {
+                        e.currentTarget.onerror = null
+                        e.currentTarget.src = DEFAULT_FOOD_IMAGE
+                      }}
+                      className="h-[120px] w-[120px] rounded-[1rem] object-cover"
+                    />
 
                     <div className="flex-1">
                       <div className="mb-2 flex items-center gap-2">

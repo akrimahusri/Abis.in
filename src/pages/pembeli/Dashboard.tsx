@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, Clock3, HelpCircle, Home, LogOut, MapPinned, ShoppingBag, UserRound } from 'lucide-react'
+import {
+  Bell,
+  Check,
+  ChevronDown,
+  Clock3,
+  HelpCircle,
+  Home,
+  LogOut,
+  MapPinned,
+  MessageCircle,
+  MessageSquare,
+  Send,
+  ShoppingBag,
+  UserRound,
+  X,
+} from 'lucide-react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../../lib/supabase'
 import { signOutUser } from '../../lib/auth'
-import { getFoodImageUrl } from '../../lib/storage'
+import { getFoodImageUrl, resolveFoodImageUrl, DEFAULT_FOOD_IMAGE } from '../../lib/storage'
 import { buyerContentClass, buyerPageTitleClass, buyerSidebarClass } from './styles'
 
 const sidebarItems = [
@@ -27,10 +42,13 @@ const filterOptions: Record<(typeof filters)[number], string[]> = {
 
 type FoodItem = {
   id: number
+  postingId: string
   title: string
   location: string
   price: number
   amount: string
+  stock: number
+  status: string
   image: string
   distanceLabel: string
   foodType: 'Makanan Berat' | 'Makanan Ringan' | 'Minuman' | 'Semua'
@@ -41,6 +59,25 @@ type SellerProfile = {
   id: string
   nama_usaha: string | null
   email: string | null
+}
+
+type SellerChat = {
+  id: string
+  sellerName: string
+  avatar: string
+  lastMessage: string
+  time: string
+  unread: boolean
+  messages: { sender: 'buyer' | 'seller'; text: string; time: string }[]
+}
+
+type BuyerNotification = {
+  id: string
+  title: string
+  message: string
+  time: string
+  type: 'chat' | 'order'
+  unread: boolean
 }
 
 type PostingRecord = {
@@ -54,6 +91,7 @@ type PostingRecord = {
   lokasi_lat: number | null
   lokasi_lng: number | null
   created_at: string
+  status?: string | null
 }
 
 const defaultBuyerCenter: [number, number] = [5.5508, 95.3193]
@@ -140,6 +178,9 @@ function getPickupTimeLabel(batasWaktuAmbil: string | null, fallbackIndex: numbe
 export default function PembeliDashboard() {
   const navigate = useNavigate()
   const dropdownRef = useRef<HTMLDivElement | null>(null)
+  const messageRef = useRef<HTMLDivElement | null>(null)
+  const notifRef = useRef<HTMLDivElement | null>(null)
+
   const mapCenter: [number, number] = [5.5508, 95.3193]
   const [userName, setUserName] = useState('Memuat...')
   const [userRole, setUserRole] = useState('Pembeli Aktif')
@@ -153,6 +194,133 @@ export default function PembeliDashboard() {
   const [foodItems, setFoodItems] = useState<FoodItem[]>([])
   const [loadingFoodItems, setLoadingFoodItems] = useState(true)
   const [buyerLocation, setBuyerLocation] = useState<[number, number] | null>(null)
+
+  // Chat & Notification Popover / Modal States
+  const [showMessageDropdown, setShowMessageDropdown] = useState(false)
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false)
+  const [activeChat, setActiveChat] = useState<SellerChat | null>(null)
+  const [buyerChatText, setBuyerChatText] = useState('')
+
+  // Chat List State (persisted to localStorage)
+  const [chats, setChats] = useState<SellerChat[]>(() => {
+    try {
+      const stored = localStorage.getItem('abis_global_chats') || localStorage.getItem('abis_buyer_chats')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item: any) => ({
+            id: item.id || `chat-${Date.now()}`,
+            sellerName: item.sellerName || item.buyerName || 'Penjual',
+            avatar: item.avatar || 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=120&h=120&fit=crop',
+            lastMessage: item.lastMessage || '',
+            time: item.time || 'Baru saja',
+            unread: item.unreadForBuyer ?? item.unread ?? false,
+            messages: item.messages || [],
+          }))
+        }
+      }
+    } catch (e) {}
+    return [
+      {
+        id: 'seller-warung-berkah',
+        sellerName: 'Warung Berkah Surplus',
+        avatar: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=120&h=120&fit=crop',
+        lastMessage: 'Halo kak! Makanan masih hangat dan siap dijemput sebelum jam 6 sore ya.',
+        time: '11:15 WIB',
+        unread: true,
+        messages: [
+          { sender: 'buyer', text: 'Halo kak, apakah porsi makanan ini masih tersedia untuk dijemput?', time: '11:10 WIB' },
+          { sender: 'seller', text: 'Halo kak! Makanan masih hangat dan siap dijemput sebelum jam 6 sore ya.', time: '11:15 WIB' },
+        ],
+      },
+      {
+        id: 'seller-nasi-gurih',
+        sellerName: 'Rumah Makan Nasi Gurih',
+        avatar: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=120&h=120&fit=crop',
+        lastMessage: 'Silakan lakukan pesanan via aplikasi, lokasi penjemputan di Jl. Syech Abdurrauf No. 12 Banda Aceh. Terima kasih!',
+        time: '09:40 WIB',
+        unread: false,
+        messages: [
+          { sender: 'buyer', text: 'Permisi kak, lokasi penjemputannya di mana ya?', time: '09:35 WIB' },
+          { sender: 'seller', text: 'Silakan lakukan pesanan via aplikasi, lokasi penjemputan di Jl. Syech Abdurrauf No. 12 Banda Aceh. Terima kasih!', time: '09:40 WIB' },
+        ],
+      },
+    ]
+  })
+
+  // Notifications State (persisted to localStorage)
+  const [notifications, setNotifications] = useState<BuyerNotification[]>(() => {
+    try {
+      const stored = localStorage.getItem('abis_buyer_notifs')
+      if (stored) return JSON.parse(stored)
+    } catch (e) {}
+    return [
+      {
+        id: 'notif-1',
+        title: 'Balasan Chat dari Penjual',
+        message: 'Warung Berkah Surplus: "Halo kak! Makanan masih hangat dan siap dijemput..."',
+        time: '11:15 WIB',
+        type: 'chat',
+        unread: true,
+      },
+      {
+        id: 'notif-2',
+        title: 'Pesanan Dikonfirmasi',
+        message: 'Pesanan makanan Anda disetujui penjual. Silakan ambil di lokasi toko.',
+        time: '10:30 WIB',
+        type: 'order',
+        unread: true,
+      },
+    ]
+  })
+
+  // Live Sync Listener from abis_global_chats & abis_buyer_notifs
+  useEffect(() => {
+    const handleGlobalSync = () => {
+      try {
+        const storedGlobal = localStorage.getItem('abis_global_chats')
+        if (storedGlobal) {
+          const parsed = JSON.parse(storedGlobal)
+          if (Array.isArray(parsed)) {
+            const formatted: SellerChat[] = parsed.map((item: any) => ({
+              id: item.id || `chat-${Date.now()}`,
+              sellerName: item.sellerName || item.buyerName || 'Penjual',
+              avatar: item.avatar || 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=120&h=120&fit=crop',
+              lastMessage: item.lastMessage || '',
+              time: item.time || 'Baru saja',
+              unread: item.unreadForBuyer ?? false,
+              messages: item.messages || [],
+            }))
+            setChats(formatted)
+
+            setActiveChat((currentActive) => {
+              if (!currentActive) return null
+              const updated = formatted.find(
+                (f) => f.id === currentActive.id || f.sellerName === currentActive.sellerName
+              )
+              return updated || currentActive
+            })
+          }
+        }
+
+        const storedNotifs = localStorage.getItem('abis_buyer_notifs')
+        if (storedNotifs) {
+          setNotifications(JSON.parse(storedNotifs))
+        }
+      } catch (e) {}
+    }
+
+    window.addEventListener('abis_chat_updated', handleGlobalSync)
+    window.addEventListener('storage', handleGlobalSync)
+
+    return () => {
+      window.removeEventListener('abis_chat_updated', handleGlobalSync)
+      window.removeEventListener('storage', handleGlobalSync)
+    }
+  }, [])
+
+  const unreadChatCount = chats.filter((c) => c.unread).length
+  const unreadNotifCount = notifications.filter((n) => n.unread).length
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -195,7 +363,7 @@ export default function PembeliDashboard() {
 
       const { data: postings, error: postingError } = await supabase
         .from('postingan_makanan')
-        .select('id, penjual_id, foto_url, nama_makanan, jumlah, harga, batas_waktu_ambil, lokasi_lat, lokasi_lng, created_at')
+        .select('id, penjual_id, foto_url, nama_makanan, jumlah, harga, batas_waktu_ambil, lokasi_lat, lokasi_lng, created_at, status')
         .neq('status', 'tidak_layak_konsumsi')
         .order('created_at', { ascending: false })
 
@@ -203,6 +371,24 @@ export default function PembeliDashboard() {
         setFoodItems([])
         setLoadingFoodItems(false)
         return
+      }
+
+      const postingIds = postings.map((item) => item.id)
+      const activeTxMap = new Map<string, number>()
+
+      if (postingIds.length > 0) {
+        const { data: txs } = await supabase
+          .from('transaksi_pembelian')
+          .select('postingan_id, status')
+          .in('postingan_id', postingIds)
+          .neq('status', 'dibatalkan')
+
+        if (txs) {
+          for (const tx of txs) {
+            const count = activeTxMap.get(tx.postingan_id) || 0
+            activeTxMap.set(tx.postingan_id, count + 1)
+          }
+        }
       }
 
       const sellerIds = [...new Set(postings.map((item) => item.penjual_id))]
@@ -230,13 +416,21 @@ export default function PembeliDashboard() {
             ? calculateDistanceKm(currentBuyerLocation[0], currentBuyerLocation[1], itemLatitude, itemLongitude)
             : null
 
+        const rawStock = safeNumber(item.jumlah) ?? 0
+        const orderedCount = activeTxMap.get(item.id) || 0
+        const stockCount = Math.max(0, rawStock - orderedCount)
+        const isOutOfStock = stockCount <= 0 || item.status === 'habis'
+
         return {
           id: index + 1,
+          postingId: item.id,
           title: item.nama_makanan,
           location: sellerName,
           price: safeNumber(item.harga) ?? 0,
-          amount: `${safeNumber(item.jumlah) ?? 1} Porsi`,
-          image: item.foto_url ? (item.foto_url.startsWith('http') ? item.foto_url : getFoodImageUrl(item.foto_url)) : 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=900&q=80',
+          amount: isOutOfStock ? 'Stok Habis' : `${stockCount} Porsi Tersedia`,
+          stock: stockCount,
+          status: isOutOfStock ? 'habis' : (item.status || 'layak_jual'),
+          image: resolveFoodImageUrl(item.foto_url, 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=900&q=80'),
           distanceLabel: getDistanceLabel(distanceKm, index),
           foodType: getFoodTypeFromTitle(item.nama_makanan),
           pickupTime: getPickupTimeLabel(item.batas_waktu_ambil, index),
@@ -255,11 +449,19 @@ export default function PembeliDashboard() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpenFilter(null)
       }
+      if (messageRef.current && !messageRef.current.contains(event.target as Node)) {
+        setShowMessageDropdown(false)
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifDropdown(false)
+      }
     }
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpenFilter(null)
+        setShowMessageDropdown(false)
+        setShowNotifDropdown(false)
       }
     }
 
@@ -271,6 +473,117 @@ export default function PembeliDashboard() {
       document.removeEventListener('keydown', handleEscape)
     }
   }, [])
+
+  const handleOpenChatWithSeller = (item: FoodItem) => {
+    const sellerId = `seller-${item.location.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
+    const existing = chats.find((c) => c.id === sellerId || c.sellerName === item.location)
+
+    if (existing) {
+      setActiveChat(existing)
+      setChats((prev) => prev.map((c) => (c.id === existing.id ? { ...c, unread: false } : c)))
+    } else {
+      const newTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
+      const newChat: SellerChat = {
+        id: sellerId,
+        sellerName: item.location,
+        avatar: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=120&h=120&fit=crop',
+        lastMessage: `Menanyakan tentang ${item.title}`,
+        time: newTime,
+        unread: false,
+        messages: [
+          {
+            sender: 'buyer',
+            text: `Halo kak, saya mau menanyakan ketersediaan & detail produk "${item.title}". Apakah bisa dijemput hari ini?`,
+            time: newTime,
+          },
+        ],
+      }
+      setChats((prev) => [newChat, ...prev])
+      setActiveChat(newChat)
+
+      // Sync to abis_global_chats
+      try {
+        const raw = localStorage.getItem('abis_global_chats')
+        let list: any[] = raw ? JSON.parse(raw) : []
+        if (!list.some((g) => g.id === sellerId || g.sellerName === item.location)) {
+          list.unshift({
+            id: sellerId,
+            buyerName: userName || 'Pembeli',
+            sellerName: item.location,
+            avatar: newChat.avatar,
+            lastMessage: newChat.lastMessage,
+            time: newTime,
+            unreadForSeller: true,
+            unreadForBuyer: false,
+            messages: newChat.messages,
+          })
+          localStorage.setItem('abis_global_chats', JSON.stringify(list))
+          window.dispatchEvent(new Event('abis_chat_updated'))
+        }
+      } catch (e) {}
+    }
+  }
+
+  const handleSendBuyerMessage = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!buyerChatText.trim() || !activeChat) return
+
+    const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
+    const newMsg = { sender: 'buyer' as const, text: buyerChatText.trim(), time: nowTime }
+    const targetId = activeChat.id
+    const sellerName = activeChat.sellerName
+
+    const updatedMessages = [...activeChat.messages, newMsg]
+    const updatedChat = {
+      ...activeChat,
+      lastMessage: buyerChatText.trim(),
+      time: nowTime,
+      messages: updatedMessages,
+    }
+
+    setActiveChat(updatedChat)
+
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === targetId
+          ? updatedChat
+          : c
+      )
+    )
+
+    setBuyerChatText('')
+
+    // Save to abis_global_chats for Seller
+    try {
+      const raw = localStorage.getItem('abis_global_chats')
+      let list: any[] = raw ? JSON.parse(raw) : []
+      const idx = list.findIndex((g) => g.id === targetId || g.sellerName === sellerName)
+
+      if (idx > -1) {
+        list[idx].lastMessage = buyerChatText.trim()
+        list[idx].time = nowTime
+        list[idx].unreadForSeller = true
+        list[idx].unreadForBuyer = false
+        list[idx].messages = updatedMessages
+      } else {
+        list.unshift({
+          id: targetId,
+          buyerName: userName || 'Pembeli',
+          sellerName,
+          avatar: activeChat.avatar,
+          lastMessage: buyerChatText.trim(),
+          time: nowTime,
+          unreadForSeller: true,
+          unreadForBuyer: false,
+          messages: updatedMessages,
+        })
+      }
+      localStorage.setItem('abis_global_chats', JSON.stringify(list))
+      window.dispatchEvent(new Event('abis_chat_updated'))
+    } catch (e) {
+      console.warn('Global chat sync note:', e)
+    }
+  }
 
   const getInitials = useMemo(() => {
     if (userName === 'Memuat...' || !userName) {
@@ -367,6 +680,41 @@ export default function PembeliDashboard() {
     })
   }, [selectedFilters])
 
+  const handleAddToCartAndCheckout = (item: FoodItem) => {
+    if (item.stock <= 0 || item.status === 'habis') return
+
+    try {
+      const existingRaw = localStorage.getItem('abis_cart')
+      let cart: any[] = existingRaw ? JSON.parse(existingRaw) : []
+
+      const existingIndex = cart.findIndex((c) => c.postingId === item.postingId || c.name === item.title)
+      if (existingIndex > -1) {
+        const currentQty = cart[existingIndex].quantity || 1
+        if (currentQty < item.stock) {
+          cart[existingIndex].quantity += 1
+        }
+        cart[existingIndex].stock = item.stock
+      } else {
+        cart.push({
+          id: item.postingId || `item-${Date.now()}`,
+          postingId: item.postingId,
+          name: item.title,
+          price: item.price,
+          quantity: 1,
+          stock: item.stock,
+          image: item.image,
+          seller: item.location,
+        })
+      }
+
+      localStorage.setItem('abis_cart', JSON.stringify(cart))
+      navigate('/pembeli/keranjang')
+    } catch (e) {
+      console.error('Error adding to cart:', e)
+      navigate('/pembeli/keranjang')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#123c2f] font-hanken">
       <div className="flex min-h-screen flex-col lg:flex-row">
@@ -413,13 +761,142 @@ export default function PembeliDashboard() {
               <h1 className={`${buyerPageTitleClass} font-bold`}>Jelajah Makanan</h1>
             </div>
 
-            <div className="flex items-center gap-3 rounded-full bg-[#f1efe9] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(18,61,50,0.08)]">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e7e1d9] text-xs font-bold text-[#123d32]">
-                {getInitials}
+            <div className="flex items-center gap-3 sm:gap-4">
+              {/* MESSAGE ICON & POPOVER */}
+              <div className="relative" ref={messageRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMessageDropdown((prev) => !prev)
+                    setShowNotifDropdown(false)
+                  }}
+                  className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#f1efe9] text-[#123d32] shadow-[inset_0_0_0_1px_rgba(18,61,50,0.08)] transition hover:bg-[#e6e2d7]"
+                  title="Pesan & Live Chat Penjual"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {unreadChatCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ee8d16] text-[10px] font-bold text-white shadow-md">
+                      {unreadChatCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* MESSAGE POPOVER */}
+                {showMessageDropdown && (
+                  <div className="absolute right-0 top-14 z-[9999] w-80 sm:w-96 rounded-2xl border border-[#d9ded6] bg-[#fcfaf5] p-4 shadow-[0_16px_36px_rgba(18,61,50,0.2)] animate-in fade-in slide-in-from-top-2">
+                    <div className="mb-3 flex items-center justify-between border-b border-[#e5e2d6] pb-3">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-[#123d32]" />
+                        <h3 className="font-bold text-[#123d32]">Pesan & Live Chat</h3>
+                      </div>
+                      <span className="rounded-full bg-[#e3eedc] px-2.5 py-0.5 text-xs font-semibold text-[#123d32]">
+                        {unreadChatCount} Baru
+                      </span>
+                    </div>
+
+                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                      {chats.map((chat) => (
+                        <div
+                          key={chat.id}
+                          onClick={() => {
+                            setActiveChat(chat)
+                            setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unread: false } : c)))
+                            setShowMessageDropdown(false)
+                          }}
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl p-3 transition ${
+                            chat.unread ? 'border border-[#a8d3b8] bg-[#ebf5ef]' : 'hover:bg-[#f1efe8]'
+                          }`}
+                        >
+                          <img src={chat.avatar} alt={chat.sellerName} className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <h4 className="truncate text-sm font-bold text-[#123d32]">{chat.sellerName}</h4>
+                              <span className="text-[10px] text-[#7a847c]">{chat.time}</span>
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-[#55635a]">{chat.lastMessage}</p>
+                          </div>
+                          {chat.unread && <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[#ee8d16]" />}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="text-right">
-                <div className="text-[12px] font-semibold text-[#123d32]">{userName}</div>
-                <div className="text-[10px] text-[#123d32]/70">{userRole}</div>
+
+              {/* NOTIFICATION ICON & POPOVER */}
+              <div className="relative" ref={notifRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNotifDropdown((prev) => !prev)
+                    setShowMessageDropdown(false)
+                  }}
+                  className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#f1efe9] text-[#123d32] shadow-[inset_0_0_0_1px_rgba(18,61,50,0.08)] transition hover:bg-[#e6e2d7]"
+                  title="Notifikasi"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md">
+                      {unreadNotifCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* NOTIFICATION POPOVER */}
+                {showNotifDropdown && (
+                  <div className="absolute right-0 top-14 z-[9999] w-80 sm:w-96 rounded-2xl border border-[#d9ded6] bg-[#fcfaf5] p-4 shadow-[0_16px_36px_rgba(18,61,50,0.2)] animate-in fade-in slide-in-from-top-2">
+                    <div className="mb-3 flex items-center justify-between border-b border-[#e5e2d6] pb-3">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-5 w-5 text-[#123d32]" />
+                        <h3 className="font-bold text-[#123d32]">Notifikasi</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))}
+                        className="text-xs font-semibold text-[#ee8d16] hover:underline"
+                      >
+                        Tandai Dibaca
+                      </button>
+                    </div>
+
+                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                      {notifications.map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            setNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item)))
+                            setShowNotifDropdown(false)
+                          }}
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl p-3 transition ${
+                            n.unread ? 'border border-[#f2d9b6] bg-[#fef7ee]' : 'hover:bg-[#f1efe8]'
+                          }`}
+                        >
+                          <div className="mt-0.5 rounded-full bg-white p-2 text-[#123d32] shadow-sm">
+                            {n.type === 'chat' ? <MessageSquare className="h-4 w-4 text-[#ee8d16]" /> : <ShoppingBag className="h-4 w-4 text-[#123d32]" />}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold text-[#123d32]">{n.title}</h4>
+                              <span className="text-[10px] text-[#7a847c]">{n.time}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-[#55635a]">{n.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* USER PROFILE CARD */}
+              <div className="flex items-center gap-3 rounded-full bg-[#f1efe9] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(18,61,50,0.08)]">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e7e1d9] text-xs font-bold text-[#123d32]">
+                  {getInitials}
+                </div>
+                <div className="text-right">
+                  <div className="text-[12px] font-semibold text-[#123d32]">{userName}</div>
+                  <div className="text-[10px] text-[#123d32]/70">{userRole}</div>
+                </div>
               </div>
             </div>
           </header>
@@ -477,7 +954,15 @@ export default function PembeliDashboard() {
                       <span className="absolute left-2 top-2 z-10 rounded-full bg-[#0d3a2c]/90 px-2.5 py-1 text-[10px] font-bold text-white">
                         {item.amount}
                       </span>
-                      <img src={item.image} alt={item.title} className="h-[150px] w-[170px] object-cover" />
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null
+                          e.currentTarget.src = DEFAULT_FOOD_IMAGE
+                        }}
+                        className="h-[150px] w-[170px] object-cover"
+                      />
                     </div>
 
                     <div className="flex flex-1 flex-col justify-between py-1">
@@ -495,12 +980,35 @@ export default function PembeliDashboard() {
                           <p className="text-[14px] font-semibold text-[#123d32]">Rp {item.price.toLocaleString('id-ID')}</p>
                         </div>
 
-                        <button
-                          type="button"
-                          className="rounded-xl bg-[#ee8d16] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(238,141,22,0.25)] transition hover:bg-[#dc7d0a]"
-                        >
-                          Ambil
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChatWithSeller(item)}
+                            className="flex items-center gap-1.5 rounded-xl border border-[#123d32]/25 bg-[#edf4ee] px-3.5 py-2.5 text-sm font-semibold text-[#123d32] transition hover:bg-[#dcecd0]"
+                            title="Tanya Penjual Produk Ini"
+                          >
+                            <MessageCircle className="h-4 w-4 text-[#123d32]" />
+                            <span className="hidden sm:inline">Tanya</span>
+                          </button>
+
+                          {item.stock <= 0 || item.status === 'habis' ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="rounded-xl bg-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-500 cursor-not-allowed shadow-none"
+                            >
+                              Stok Habis
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleAddToCartAndCheckout(item)}
+                              className="rounded-xl bg-[#ee8d16] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(238,141,22,0.25)] transition hover:bg-[#dc7d0a]"
+                            >
+                              Ambil
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -512,7 +1020,7 @@ export default function PembeliDashboard() {
                 )}
               </div>
 
-              <div className="relative h-[560px] overflow-hidden rounded-[28px] border border-[#dfe5dd] bg-[#dfe7e4] shadow-[0_14px_30px_rgba(20,39,31,0.08)]">
+              <div className="relative z-0 isolate h-[560px] overflow-hidden rounded-[28px] border border-[#dfe5dd] bg-[#dfe7e4] shadow-[0_14px_30px_rgba(20,39,31,0.08)]">
                 <MapContainer
                   center={mapCenter}
                   zoom={16}
@@ -542,6 +1050,71 @@ export default function PembeliDashboard() {
           </main>
         </div>
       </div>
+
+      {/* BUYER LIVE CHAT MODAL OVERLAY */}
+      {activeChat && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="flex h-[520px] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#e5e2d6] bg-[#f8f6f0] px-6 py-4">
+              <div className="flex items-center gap-3">
+                <img src={activeChat.avatar} alt={activeChat.sellerName} className="h-10 w-10 rounded-full border-2 border-[#123d32] object-cover" />
+                <div>
+                  <h3 className="font-bold text-[#123d32] text-base">{activeChat.sellerName}</h3>
+                  <p className="flex items-center gap-1 text-xs font-semibold text-[#3a8d54]">
+                    <span className="inline-block h-2 w-2 animate-ping rounded-full bg-[#3a8d54]" /> Online (Mitra Penjual)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveChat(null)}
+                className="rounded-full p-1.5 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Chat Body */}
+            <div className="flex-1 space-y-4 overflow-y-auto bg-[#faf8f3] p-5">
+              {activeChat.messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex flex-col ${msg.sender === 'buyer' ? 'items-end' : 'items-start'}`}
+                >
+                  <div
+                    className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                      msg.sender === 'buyer'
+                        ? 'rounded-br-none bg-[#123d32] text-white'
+                        : 'rounded-bl-none border border-[#e2decb] bg-white text-[#123d32]'
+                    }`}
+                  >
+                    <p className="leading-relaxed">{msg.text}</p>
+                  </div>
+                  <span className="mt-1 px-1 text-[10px] text-[#7a847c]">{msg.time}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Reply Form */}
+            <form onSubmit={handleSendBuyerMessage} className="flex items-center gap-2 border-t border-[#e5e2d6] bg-white p-4">
+              <input
+                type="text"
+                value={buyerChatText}
+                onChange={(e) => setBuyerChatText(e.target.value)}
+                placeholder="Tulis pesan untuk penjual..."
+                className="flex-1 rounded-full border border-[#cbd5cf] bg-[#f8f7f2] px-4 py-2.5 text-sm text-[#123d32] outline-none focus:border-[#123d32]"
+              />
+              <button
+                type="submit"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ee8d16] text-white shadow-md transition hover:bg-[#dc7d0a]"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

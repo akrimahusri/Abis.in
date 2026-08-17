@@ -67,107 +67,195 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
   const messageRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
 
-  // Dummy Messages List
-  const [chats, setChats] = useState<BuyerChat[]>([
-    {
-      id: 'chat-1',
-      buyerName: 'Ahmad Rizky',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop',
-      lastMessage: 'Halo kak, apakah Tumis Kangkung ini masih bisa dijemput jam 5 sore nanti?',
-      time: '10:15 WIB',
-      unread: true,
-      messages: [
-        { sender: 'buyer', text: 'Halo kak, apakah Tumis Kangkung ini masih bisa dijemput jam 5 sore nanti?', time: '10:15 WIB' },
-      ],
-    },
-    {
-      id: 'chat-2',
-      buyerName: 'Siti Rahma',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop',
-      lastMessage: 'Saya sudah sampai di depan lokasi warung kak.',
-      time: '09:40 WIB',
-      unread: true,
-      messages: [
-        { sender: 'seller', text: 'Siap kak, porsi sudah kami kemas dan siap diambil.', time: '09:35 WIB' },
-        { sender: 'buyer', text: 'Saya sudah sampai di depan lokasi warung kak.', time: '09:40 WIB' },
-      ],
-    },
-    {
-      id: 'chat-3',
-      buyerName: 'Budi Santoso',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&h=120&fit=crop',
-      lastMessage: 'Makanan surplus kemarin rasanya sangat lezat, terima kasih banyak kak!',
-      time: 'Kemarin',
-      unread: false,
-      messages: [
-        { sender: 'buyer', text: 'Makanan surplus kemarin rasanya sangat lezat, terima kasih banyak kak!', time: 'Kemarin' },
-        { sender: 'seller', text: 'Sama-sama kak Budi! Senang bisa memberikan dampak positif.', time: 'Kemarin' },
-      ],
-    },
-  ])
-
-  // Dummy Notifications List
-  const [notifications, setNotifications] = useState<SellerNotification[]>([
-    {
-      id: 'notif-1',
-      title: 'Pesanan Baru Diterima',
-      message: 'Pembeli Ahmad Rizky baru saja memesan 2 porsi Tumis Kangkung (#TRX-9821).',
-      time: '5m lalu',
-      type: 'order',
-      unread: true,
-    },
-    {
-      id: 'notif-2',
-      title: 'Balasan Pesan Pembeli',
-      message: 'Pembeli Siti Rahma membalas: "Saya sudah sampai di depan lokasi warung kak."',
-      time: '15m lalu',
-      type: 'chat',
-      unread: true,
-    },
-    {
-      id: 'notif-3',
-      title: 'Ulasan ⭐ 5.0 Baru',
-      message: 'Pembeli Budi Santoso memberikan rating 5 bintang: "Makanan segar dan sangat higienis!"',
-      time: '1j lalu',
-      type: 'rating',
-      unread: true,
-    },
-    {
-      id: 'notif-4',
-      title: 'Penjemputan Selesai',
-      message: 'Pesanan #TRX-9810 telah berhasil diselesaikan oleh Pembeli Rina.',
-      time: '3j lalu',
-      type: 'order',
-      unread: false,
-    },
-  ])
+  // Real Messages & Notifications State
+  const [chats, setChats] = useState<BuyerChat[]>([])
+  const [notifications, setNotifications] = useState<SellerNotification[]>([])
 
   const unreadChatCount = chats.filter((c) => c.unread).length
   const unreadNotifCount = notifications.filter((n) => n.unread).length
 
-  const fetchProfile = async () => {
+  const fetchProfileAndNotifications = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('name, role, avatar_url, nama_usaha')
-        .eq('id', session.user.id)
-        .single()
-      if (data && !error) {
-        setUserName(data.nama_usaha || data.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Penjual')
-        setUserRole(data.role === 'penjual' ? 'Mitra Penjual' : data.role)
-        if (data.avatar_url) setUserAvatar(data.avatar_url)
-      } else {
-        setUserName(session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Penjual')
+    if (!session?.user) return
+
+    // 1. Fetch Profile
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('name, role, avatar_url, nama_usaha')
+      .eq('id', session.user.id)
+      .single()
+    if (data && !error) {
+      setUserName(data.nama_usaha || data.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Penjual')
+      setUserRole(data.role === 'penjual' ? 'Mitra Penjual' : data.role)
+      if (data.avatar_url) setUserAvatar(data.avatar_url)
+    } else {
+      setUserName(session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Penjual')
+    }
+
+    // 2. Fetch Live Notifications & Chats from DB
+    try {
+      const { data: myPostings } = await supabase
+        .from('postingan_makanan')
+        .select('id, nama_makanan')
+        .eq('penjual_id', session.user.id)
+
+      if (!myPostings || myPostings.length === 0) {
+        setNotifications([])
+        setChats([])
+        return
       }
+
+      const postingIds = myPostings.map((p) => p.id)
+      const postingMap = new Map(myPostings.map((p) => [p.id, p]))
+
+      const { data: txs } = await supabase
+        .from('transaksi_pembelian')
+        .select('id, postingan_id, pembeli_id, status, created_at')
+        .in('postingan_id', postingIds)
+        .order('created_at', { ascending: false })
+
+      if (txs && txs.length > 0) {
+        const buyerIds = [...new Set(txs.map((t) => t.pembeli_id).filter(Boolean))]
+        let buyerMap = new Map()
+
+        if (buyerIds.length > 0) {
+          const { data: buyers } = await supabase
+            .from('profiles')
+            .select('id, name, email, telepon, avatar_url')
+            .in('id', buyerIds)
+
+          if (buyers) {
+            buyerMap = new Map(buyers.map((b) => [b.id, b]))
+          }
+        }
+
+        const notifList: SellerNotification[] = txs.map((tx) => {
+          const posting = postingMap.get(tx.postingan_id)
+          const buyer = buyerMap.get(tx.pembeli_id)
+          const buyerName = buyer?.name || buyer?.email?.split('@')[0] || 'Pembeli'
+          const txDate = new Date(tx.created_at)
+
+          const formattedTime = Number.isNaN(txDate.getTime())
+            ? 'Baru saja'
+            : txDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
+
+          const title =
+            tx.status === 'menunggu'
+              ? 'Pesanan Baru Diterima'
+              : tx.status === 'terkonfirmasi'
+              ? 'Pesanan Disetujui'
+              : tx.status === 'selesai'
+              ? 'Penjemputan Selesai'
+              : 'Pesanan Dibatalkan'
+
+          return {
+            id: tx.id,
+            title,
+            message: `Pembeli ${buyerName} memesan ${posting?.nama_makanan || 'Makanan Surplus'}`,
+            time: formattedTime,
+            type: 'order',
+            unread: tx.status === 'menunggu',
+          }
+        })
+
+        setNotifications(notifList)
+
+        // Dynamic Chats from DB + abis_global_chats from localStorage
+        const chatList: BuyerChat[] = buyerIds.map((bId) => {
+          const buyer = buyerMap.get(bId)
+          const buyerName = buyer?.name || buyer?.email?.split('@')[0] || 'Pembeli'
+          const buyerTxs = txs.filter((t) => t.pembeli_id === bId)
+          const lastTx = buyerTxs[0]
+          const posting = postingMap.get(lastTx?.postingan_id)
+          const txDate = new Date(lastTx?.created_at)
+
+          const timeStr = Number.isNaN(txDate.getTime())
+            ? 'Baru'
+            : txDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
+
+          return {
+            id: bId,
+            buyerName,
+            avatar: buyer?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop',
+            lastMessage: `Pesanan makanan: ${posting?.nama_makanan || 'Makanan Surplus'}. Kontak: ${buyer?.telepon || '-'}`,
+            time: timeStr,
+            unread: buyerTxs.some((t) => t.status === 'menunggu'),
+            messages: [
+              {
+                sender: 'buyer',
+                text: `Halo, saya telah memesan ${posting?.nama_makanan || 'makanan surplus'}. Mohon konfirmasi pesanan saya.`,
+                time: timeStr,
+              },
+            ],
+          }
+        })
+
+        // Merge chats with abis_global_chats
+        try {
+          const rawGlobal = localStorage.getItem('abis_global_chats')
+          if (rawGlobal) {
+            const parsed = JSON.parse(rawGlobal)
+            if (Array.isArray(parsed)) {
+              parsed.forEach((item: any) => {
+                const existingIndex = chatList.findIndex((c) => c.id === item.id || c.buyerName === item.buyerName)
+                const formattedChat: BuyerChat = {
+                  id: item.id || `chat-${Date.now()}`,
+                  buyerName: item.buyerName || item.sellerName || 'Pembeli Abis.in',
+                  avatar: item.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop',
+                  lastMessage: item.lastMessage || 'Pesan dari pembeli',
+                  time: item.time || 'Baru saja',
+                  unread: item.unreadForSeller ?? true,
+                  messages: item.messages || [],
+                }
+                if (existingIndex > -1) {
+                  chatList[existingIndex] = formattedChat
+                } else {
+                  chatList.unshift(formattedChat)
+                }
+              })
+            }
+          }
+        } catch (e) {}
+
+        setChats(chatList)
+      } else {
+        setNotifications([])
+        // Fallback to load global chats if no orders
+        try {
+          const rawGlobal = localStorage.getItem('abis_global_chats')
+          if (rawGlobal) {
+            const parsed = JSON.parse(rawGlobal)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const formattedList: BuyerChat[] = parsed.map((item: any) => ({
+                id: item.id || `chat-${Date.now()}`,
+                buyerName: item.buyerName || 'Pembeli Abis.in',
+                avatar: item.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop',
+                lastMessage: item.lastMessage || 'Pesan dari pembeli',
+                time: item.time || 'Baru saja',
+                unread: item.unreadForSeller ?? true,
+                messages: item.messages || [],
+              }))
+              setChats(formattedList)
+              return
+            }
+          }
+        } catch (e) {}
+        setChats([])
+      }
+    } catch (e) {
+      console.warn('Real notifications load note:', e)
     }
   }
 
   useEffect(() => {
-    fetchProfile()
+    fetchProfileAndNotifications()
 
-    const handleProfileUpdate = () => fetchProfile()
+    const handleProfileUpdate = () => fetchProfileAndNotifications()
+    const handleChatUpdate = () => fetchProfileAndNotifications()
+
     window.addEventListener('profileUpdated', handleProfileUpdate)
+    window.addEventListener('abis_chat_updated', handleChatUpdate)
+    window.addEventListener('storage', handleChatUpdate)
 
     const handleClickOutside = (event: MouseEvent) => {
       if (messageRef.current && !messageRef.current.contains(event.target as Node)) {
@@ -181,12 +269,15 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       window.removeEventListener('profileUpdated', handleProfileUpdate)
+      window.removeEventListener('abis_chat_updated', handleChatUpdate)
+      window.removeEventListener('storage', handleChatUpdate)
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
 
   const navItems = [
     { name: 'Beranda', path: '/penjual', icon: Home },
+    { name: 'Konfirmasi Pesanan', path: '/penjual/pesanan', icon: ShoppingBag },
     { name: 'Postingan Makanan', path: '/penjual/postingan', icon: List },
     { name: 'Dompet', path: '/penjual/dompet', icon: Wallet },
     { name: 'Profile', path: '/penjual/profile', icon: User },
@@ -197,6 +288,12 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
   const handleLogout = async () => {
     await signOutUser()
     navigate('/auth')
+  }
+
+  const handleNotifClick = (notifId: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, unread: false } : n)))
+    setShowNotifDropdown(false)
+    navigate('/penjual/pesanan')
   }
 
   const handleOpenChat = (chat: BuyerChat) => {
@@ -213,30 +310,67 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
 
     const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
     const newMsg = { sender: 'seller' as const, text: replyText.trim(), time: nowTime }
+    const targetId = activeChat.id
 
-    setActiveChat((prev) =>
-      prev
-        ? {
-            ...prev,
-            lastMessage: replyText.trim(),
-            time: nowTime,
-            messages: [...prev.messages, newMsg],
-          }
-        : null
-    )
+    const updatedMessages = [...activeChat.messages, newMsg]
+    const updatedChat = {
+      ...activeChat,
+      lastMessage: replyText.trim(),
+      time: nowTime,
+      unread: false,
+      messages: updatedMessages,
+    }
+
+    setActiveChat(updatedChat)
 
     setChats((prev) =>
-      prev.map((c) =>
-        c.id === activeChat.id
-          ? {
-              ...c,
-              lastMessage: replyText.trim(),
-              time: nowTime,
-              messages: [...c.messages, newMsg],
-            }
-          : c
-      )
+      prev.map((c) => (c.id === targetId ? updatedChat : c))
     )
+
+    // Sync to abis_global_chats & notify buyer
+    try {
+      const rawGlobal = localStorage.getItem('abis_global_chats')
+      let globalList: any[] = rawGlobal ? JSON.parse(rawGlobal) : []
+      const idx = globalList.findIndex((g) => g.id === targetId || g.sellerName === activeChat.buyerName || g.buyerName === activeChat.buyerName)
+
+      if (idx > -1) {
+        globalList[idx].lastMessage = replyText.trim()
+        globalList[idx].time = nowTime
+        globalList[idx].unreadForBuyer = true
+        globalList[idx].unreadForSeller = false
+        globalList[idx].messages = updatedMessages
+      } else {
+        globalList.unshift({
+          id: targetId,
+          buyerName: activeChat.buyerName,
+          sellerName: userName || 'Mitra Penjual',
+          avatar: activeChat.avatar,
+          lastMessage: replyText.trim(),
+          time: nowTime,
+          unreadForBuyer: true,
+          unreadForSeller: false,
+          messages: updatedMessages,
+        })
+      }
+      localStorage.setItem('abis_global_chats', JSON.stringify(globalList))
+
+      // Add notification for buyer
+      const rawBuyerNotifs = localStorage.getItem('abis_buyer_notifs')
+      let buyerNotifs: any[] = rawBuyerNotifs ? JSON.parse(rawBuyerNotifs) : []
+      buyerNotifs.unshift({
+        id: `notif-${Date.now()}`,
+        title: `Balasan Chat dari ${userName || 'Penjual'}`,
+        message: `${userName || 'Penjual'}: "${replyText.trim().substring(0, 55)}..."`,
+        time: nowTime,
+        type: 'chat',
+        unread: true,
+      })
+      localStorage.setItem('abis_buyer_notifs', JSON.stringify(buyerNotifs))
+
+      window.dispatchEvent(new Event('abis_chat_updated'))
+    } catch (err) {
+      console.warn('Sync reply note:', err)
+    }
 
     setReplyText('')
   }
@@ -445,28 +579,36 @@ export default function PenjualLayout({ children }: PenjualLayoutProps) {
                     </div>
 
                     <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                      {notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          className={`flex items-start gap-3 p-3 rounded-xl transition ${
-                            n.unread ? 'bg-amber-50/70 border border-amber-200' : 'hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="mt-0.5 p-2 rounded-full bg-white shadow-sm shrink-0">
-                            {n.type === 'order' && <ShoppingBag className="w-4 h-4 text-abisOrange" />}
-                            {n.type === 'chat' && <MessageSquare className="w-4 h-4 text-emerald-600" />}
-                            {n.type === 'rating' && <Star className="w-4 h-4 text-amber-500 fill-amber-500" />}
-                          </div>
-
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-bold text-xs text-slate-900">{n.title}</h4>
-                              <span className="text-[10px] text-slate-400">{n.time}</span>
+                      {notifications.length > 0 ? (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            onClick={() => handleNotifClick(n.id)}
+                            className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition ${
+                              n.unread ? 'bg-amber-50/70 border border-amber-200 hover:bg-amber-100/70' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="mt-0.5 p-2 rounded-full bg-white shadow-sm shrink-0">
+                              {n.type === 'order' && <ShoppingBag className="w-4 h-4 text-abisOrange" />}
+                              {n.type === 'chat' && <MessageSquare className="w-4 h-4 text-emerald-600" />}
+                              {n.type === 'rating' && <Star className="w-4 h-4 text-amber-500 fill-amber-500" />}
                             </div>
-                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{n.message}</p>
+
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-bold text-xs text-slate-900">{n.title}</h4>
+                                <span className="text-[10px] text-slate-400">{n.time}</span>
+                              </div>
+                              <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{n.message}</p>
+                              <p className="text-[10px] font-bold text-abisGreen mt-1 underline">Klik untuk konfirmasi pesanan →</p>
+                            </div>
                           </div>
+                        ))
+                      ) : (
+                        <div className="py-6 text-center text-xs text-slate-500">
+                          Belum ada notifikasi pesanan masuk.
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 )}
