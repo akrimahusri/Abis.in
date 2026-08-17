@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import PenjualLayout from '../../layouts/PenjualLayout'
-import { Camera, Check, Clock3, Edit2, Mail, MapPin, MessageCircle, RefreshCw, ShieldCheck, Star, Store, X } from 'lucide-react'
+import { Camera, Check, Clock3, Edit2, Loader2, Mail, MapPin, MessageCircle, Navigation, RefreshCw, ShieldCheck, Star, Store, X } from 'lucide-react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../../lib/supabase'
 import { uploadFoodImage, getFoodImageUrl } from '../../lib/storage'
+import LocationPicker from '../../components/LocationPicker'
 
 const initialOperationalHours = [
   { day: 'Senin', buka: '08:00', tutup: '20:00', pickup: '19:00 - 20:30' },
@@ -42,6 +43,11 @@ export default function PenjualProfile() {
     newPassword: '',
     confirmPassword: '',
   })
+
+  // Koordinat lokasi
+  const [userLat, setUserLat] = useState<number | null>(null)
+  const [userLng, setUserLng] = useState<number | null>(null)
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
 
   const showToast = (msg: string) => {
     setToastMessage(msg)
@@ -83,6 +89,8 @@ export default function PenjualProfile() {
               fotoUrl: dbProfile.foto_url || dbProfile.avatar_url || '',
               operationalHours: parsedHours,
             })
+            if (dbProfile.latitude) setUserLat(dbProfile.latitude)
+            if (dbProfile.longitude) setUserLng(dbProfile.longitude)
           } else {
             setProfile((prev) => ({
               ...prev,
@@ -236,6 +244,7 @@ export default function PenjualProfile() {
   }
 
   return (
+    <>
     <PenjualLayout>
       <input
         type="file"
@@ -452,25 +461,47 @@ export default function PenjualProfile() {
                 </div>
               </div>
 
-              <div className="mt-5 overflow-hidden rounded-[1.2rem] border border-[#dbe0d6] bg-[#edf0ea] shadow-inner z-0 isolate">
-                <MapContainer
-                  center={defaultCenter}
-                  zoom={15}
-                  scrollWheelZoom={false}
-                  className="h-[14.5rem] w-full"
-                  zoomControl={true}
+              {/* Map + Pin lokasi */}
+              <div className="mt-5 relative">
+                <div className="overflow-hidden rounded-[1.2rem] border border-[#dbe0d6] bg-[#edf0ea] shadow-inner z-0 isolate">
+                  <MapContainer
+                    key={`${userLat ?? 0}-${userLng ?? 0}`}
+                    center={userLat && userLng ? [userLat, userLng] : defaultCenter}
+                    zoom={15}
+                    scrollWheelZoom={false}
+                    className="h-[14.5rem] w-full"
+                    zoomControl={true}
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    <Marker position={userLat && userLng ? [userLat, userLng] : defaultCenter} icon={mapMarkerIcon}>
+                      <Popup>
+                        <div className="text-sm font-semibold text-[#1b4332]">{profile.businessName}</div>
+                        <div className="text-xs text-[#1b4332]/70">{profile.address}</div>
+                        {userLat && userLng && (
+                          <div className="text-[10px] text-gray-400 font-mono mt-1">{userLat.toFixed(5)}, {userLng.toFixed(5)}</div>
+                        )}
+                      </Popup>
+                    </Marker>
+                  </MapContainer>
+                </div>
+
+                {/* Pin lokasi button */}
+                <button
+                  type="button"
+                  id="btn-lokasi-penjual"
+                  onClick={() => setShowLocationPicker(true)}
+                  className="mt-2.5 w-full flex items-center justify-center gap-2 rounded-xl border border-[#dbe0d6] bg-white px-4 py-2 text-xs font-semibold text-[#1b4332] hover:border-[#1b4332] hover:bg-[#f0faf5] transition shadow-sm"
                 >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <Marker position={defaultCenter} icon={mapMarkerIcon}>
-                    <Popup>
-                      <div className="text-sm font-semibold text-[#1b4332]">{profile.businessName}</div>
-                      <div className="text-xs text-[#1b4332]/70">{profile.address}</div>
-                    </Popup>
-                  </Marker>
-                </MapContainer>
+                  <MapPin className={`h-3.5 w-3.5 ${userLat ? 'text-[#1b4332]' : 'text-gray-400'}`} />
+                  {userLat && userLng
+                    ? <span>Pin aktif: <span className="font-mono">{userLat.toFixed(4)}, {userLng.toFixed(4)}</span> — Ubah Lokasi</span>
+                    : 'Pasang Pin Lokasi Usaha'
+                  }
+                  <Navigation className="h-3 w-3 ml-auto text-gray-400" />
+                </button>
               </div>
             </section>
 
@@ -638,5 +669,18 @@ export default function PenjualProfile() {
         </div>
       )}
     </PenjualLayout>
+
+    {/* Location Picker Modal */}
+    {showLocationPicker && (
+      <LocationPicker
+        userId={userId}
+        initialLat={userLat}
+        initialLng={userLng}
+        pinColor="#d45353"
+        onSave={(lat, lng) => { setUserLat(lat); setUserLng(lng); showToast('Pin lokasi usaha berhasil disimpan!') }}
+        onClose={() => setShowLocationPicker(false)}
+      />
+    )}
+  </>
   )
 }

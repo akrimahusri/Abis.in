@@ -15,10 +15,10 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  
+
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
-  
+
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -195,24 +195,24 @@ export default function AuthPage() {
 
   const renderRoleSelector = () => (
     <div className="flex items-center gap-3 w-full mb-6 mt-4 overflow-x-auto pb-2">
-      <button 
-        type="button" 
+      <button
+        type="button"
         onClick={() => setRole('penjual')}
         className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold transition whitespace-nowrap
           ${role === 'penjual' ? 'bg-abisGreen text-white border-abisGreen' : 'border-abisGreen text-abisGreen hover:bg-abisGreen/5'}`}
       >
         <Store className="w-4 h-4" /> Penjual
       </button>
-      <button 
-        type="button" 
+      <button
+        type="button"
         onClick={() => setRole('pembeli')}
         className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold transition whitespace-nowrap
           ${role === 'pembeli' ? 'bg-abisGreen text-white border-abisGreen' : 'border-abisGreen text-abisGreen hover:bg-abisGreen/5'}`}
       >
         <ShoppingBag className="w-4 h-4" /> Pembeli
       </button>
-      <button 
-        type="button" 
+      <button
+        type="button"
         onClick={() => setRole('peternak')}
         className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold transition whitespace-nowrap
           ${role === 'peternak' ? 'bg-abisGreen text-white border-abisGreen' : 'border-abisGreen text-abisGreen hover:bg-abisGreen/5'}`}
@@ -260,7 +260,7 @@ export default function AuthPage() {
           // CTA Welcome Back (for navigating to Sign In)
           <div className="max-w-md w-full space-y-4">
             <h1 className="text-5xl md:text-6xl font-literata font-semibold text-abisGreen leading-tight">
-              Selamat Datang <br/><span className="text-abisOrange font-bold">Kembali</span>
+              Selamat Datang <br /><span className="text-abisOrange font-bold">Kembali</span>
             </h1>
             <p className="text-slate-700 max-w-xs text-sm pt-2 pb-4">
               Masuk untuk melanjutkan perjalanan Anda dalam mengurangi limbah makanan bersama Abis.in.
@@ -273,20 +273,20 @@ export default function AuthPage() {
           // Login Form
           <div className="max-w-md w-full">
             <h2 className="text-4xl md:text-5xl font-literata font-semibold text-abisGreen">
-              Masuk <br/>ke akun<span className="text-abisOrange font-bold">.</span>
+              Masuk <br />ke akun<span className="text-abisOrange font-bold">.</span>
             </h2>
             <p className="text-xs text-slate-500 mt-6 mb-2">Pilih peran yang sesuai untuk mendapatkan pengalaman dan fitur yang tepat.</p>
             {renderRoleSelector()}
-            
+
             <p className="text-xs text-slate-400 mb-6 text-center">Masuk menggunakan email untuk mengakses akun Abis.in.</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               {renderLoginFields()}
-              
+
               {successMessage && <p className="text-xs text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200">{successMessage}</p>}
               {error && <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
-              
+
               {renderSocials()}
-              
+
               <div className="pt-6 flex justify-center">
                 <button disabled={loading} type="submit" className="px-12 py-2.5 rounded-md bg-abisGreen text-white font-semibold text-sm hover:bg-[#144129] transition">
                   {loading ? 'Memproses...' : 'Masuk'}
@@ -303,7 +303,7 @@ export default function AuthPage() {
           // CTA Mari Mulai Bersama (for navigating to Sign Up)
           <div className="max-w-md w-full space-y-4 md:pl-12">
             <h1 className="text-5xl md:text-6xl font-literata font-semibold text-abisGreen leading-tight">
-              Mari Mulai <br/>Bersama <span className="text-abisOrange font-bold">Abis.in!</span>
+              Mari Mulai <br />Bersama <span className="text-abisOrange font-bold">Abis.in!</span>
             </h1>
             <p className="text-slate-700 max-w-xs text-sm pt-2 pb-4">
               Daftar menggunakan email untuk mulai menikmati semua fitur Abis.in.
@@ -316,20 +316,20 @@ export default function AuthPage() {
           // Register Form
           <div className="max-w-md w-full md:pl-12">
             <h2 className="text-4xl md:text-5xl font-literata font-semibold text-abisGreen">
-              Buat <br/>akun baru<span className="text-abisOrange font-bold">.</span>
+              Buat <br />akun baru<span className="text-abisOrange font-bold">.</span>
             </h2>
             <p className="text-xs text-slate-500 mt-6 mb-2">Pilih peran yang sesuai untuk mendapatkan pengalaman dan fitur yang tepat.</p>
             {renderRoleSelector()}
-            
+
             <p className="text-xs text-slate-400 mb-6 text-center">Daftar menggunakan email untuk mulai menjual makanan surplus yang masih layak konsumsi.</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               {renderRegisterFields()}
-              
+
               {successMessage && <p className="text-xs text-emerald-800 bg-emerald-50 p-3 rounded-xl border border-emerald-200">{successMessage}</p>}
               {error && <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
-              
+
               {renderSocials()}
-              
+
               <div className="pt-6 flex justify-center">
                 <button disabled={loading} type="submit" className="px-12 py-2.5 rounded-md bg-abisGreen text-white font-semibold text-sm hover:bg-[#144129] transition">
                   {loading ? 'Memproses...' : 'Daftar'}

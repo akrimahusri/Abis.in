@@ -9,8 +9,10 @@ import {
   HelpCircle,
   Home,
   LogOut,
+  MapPin,
   Menu,
   MessageCircle,
+  Navigation,
   Phone,
   Search,
   Shield,
@@ -24,6 +26,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { signOutUser } from '../../lib/auth'
 import { uploadFoodImage, getFoodImageUrl } from '../../lib/storage'
+import LocationPicker from '../../components/LocationPicker'
 
 interface RatingReview {
   id: string
@@ -52,6 +55,11 @@ export default function PeternakProfil() {
     return val !== null ? val === 'true' : false
   })
   const [loading, setLoading] = useState(true)
+
+  // Koordinat lokasi
+  const [userLat, setUserLat] = useState<number | null>(null)
+  const [userLng, setUserLng] = useState<number | null>(null)
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
 
   // Real reviews list (starts empty if no merchant reviews exist yet)
   const [reviewsList, setReviewsList] = useState<RatingReview[]>([])
@@ -127,6 +135,8 @@ export default function PeternakProfil() {
             alamat: userMeta.address || dbProfile?.alamat || 'Jl. Tungkop, Aceh Besar, Aceh',
             fotoUrl: fetchedFoto,
           })
+          if (dbProfile?.latitude) setUserLat(dbProfile.latitude)
+          if (dbProfile?.longitude) setUserLng(dbProfile.longitude)
         }
       } catch (err) {
         console.warn('Supabase profile load fallback:', err)
@@ -280,6 +290,7 @@ export default function PeternakProfil() {
   const displayedReviews = showAllRatings ? reviewsList : reviewsList.slice(0, 3)
 
   return (
+    <>
     <PeternakLayout>
       <div className="font-hanken relative max-w-5xl mx-auto space-y-6">
         {/* Hidden File Input for Direct Upload */}
@@ -669,6 +680,26 @@ export default function PeternakProfil() {
                 />
               </div>
 
+              {/* Koordinat Lokasi */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">
+                  Koordinat Lokasi
+                </label>
+                <button
+                  type="button"
+                  id="btn-lokasi-peternak"
+                  onClick={() => { setIsEditModalOpen(false); setShowLocationPicker(true) }}
+                  className="w-full flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-[#123d32] hover:border-[#0b3c2d] hover:bg-emerald-50 transition text-left"
+                >
+                  <MapPin className={`h-4 w-4 shrink-0 ${userLat ? 'text-[#0b3c2d]' : 'text-gray-400'}`} />
+                  {userLat && userLng
+                    ? <span className="font-mono text-xs text-[#0b3c2d]">{userLat.toFixed(5)}, {userLng.toFixed(5)}</span>
+                    : <span className="text-gray-400">Belum ada pin — Klik untuk pasang lokasi</span>
+                  }
+                  <Navigation className="h-3.5 w-3.5 ml-auto text-gray-400" />
+                </button>
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-3 border-t">
                 <button
                   type="button"
@@ -735,5 +766,18 @@ export default function PeternakProfil() {
         </div>
       )}
     </PeternakLayout>
+
+    {/* Location Picker Modal */}
+    {showLocationPicker && (
+      <LocationPicker
+        userId={profile.id || null}
+        initialLat={userLat}
+        initialLng={userLng}
+        pinColor="#0b3c2d"
+        onSave={(lat, lng) => { setUserLat(lat); setUserLng(lng); showToast('Lokasi berhasil disimpan!') }}
+        onClose={() => { setShowLocationPicker(false); setIsEditModalOpen(true) }}
+      />
+    )}
+    </>
   )
 }
