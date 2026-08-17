@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import PenjualLayout from '../../layouts/PenjualLayout'
 import { Camera, Check, Clock3, Edit2, Mail, MapPin, MessageCircle, RefreshCw, ShieldCheck, Star, Store, X } from 'lucide-react'
+import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { divIcon } from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { supabase } from '../../lib/supabase'
 import { uploadFoodImage, getFoodImageUrl } from '../../lib/storage'
 
@@ -97,11 +100,18 @@ export default function PenjualProfile() {
     fetchSupabaseProfile()
   }, [])
 
-  const mapStyle = {
-    backgroundImage:
-      'linear-gradient(125deg, transparent 0 25%, rgba(90,110,91,0.08) 25% 27%, transparent 27% 42%, rgba(90,110,91,0.08) 42% 44%, transparent 44% 100%), linear-gradient(42deg, transparent 0 32%, rgba(90,110,91,0.08) 32% 34%, transparent 34% 58%, rgba(90,110,91,0.08) 58% 60%, transparent 60% 100%), linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.42)), radial-gradient(circle at 20% 20%, rgba(255,255,255,0.75), transparent 18%), radial-gradient(circle at 78% 26%, rgba(255,255,255,0.6), transparent 22%)',
-    backgroundColor: '#edf1ea',
-  }
+  const defaultCenter: [number, number] = [5.5508, 95.3193]
+
+  const mapMarkerIcon = divIcon({
+    className: 'abis-map-marker',
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;transform:translate(-50%, -100%);">
+        <div style="width:18px;height:18px;border-radius:9999px;background:#d45353;border:4px solid rgba(255,255,255,0.95);box-shadow:0 8px 20px rgba(212,83,83,0.25);"></div>
+      </div>
+    `,
+    iconSize: [1, 1],
+    iconAnchor: [0, 0],
+  })
 
   const updateProfileField = (field: keyof typeof initialProfile, value: string) => {
     setProfile((prev) => ({ ...prev, [field]: value }))
@@ -442,11 +452,25 @@ export default function PenjualProfile() {
                 </div>
               </div>
 
-              <div className="mt-5 overflow-hidden rounded-[1.2rem] border border-[#dbe0d6] bg-[#edf0ea] shadow-inner">
-                <div className="relative h-[14.5rem] w-full" style={mapStyle}>
-                  <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-[#d45353] shadow-[0_0_0_5px_rgba(212,83,83,0.12)]" />
-                  <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#d45353]/30 bg-[#d45353]/10" />
-                </div>
+              <div className="mt-5 overflow-hidden rounded-[1.2rem] border border-[#dbe0d6] bg-[#edf0ea] shadow-inner z-0 isolate">
+                <MapContainer
+                  center={defaultCenter}
+                  zoom={15}
+                  scrollWheelZoom={false}
+                  className="h-[14.5rem] w-full"
+                  zoomControl={true}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <Marker position={defaultCenter} icon={mapMarkerIcon}>
+                    <Popup>
+                      <div className="text-sm font-semibold text-[#1b4332]">{profile.businessName}</div>
+                      <div className="text-xs text-[#1b4332]/70">{profile.address}</div>
+                    </Popup>
+                  </Marker>
+                </MapContainer>
               </div>
             </section>
 

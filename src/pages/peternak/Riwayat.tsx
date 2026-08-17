@@ -3,6 +3,7 @@ import PeternakLayout from '../../layouts/PeternakLayout'
 import { Link } from 'react-router-dom'
 import { Clock, CheckCircle2, ChevronRight, MapPin, Loader2, Package } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { resolveFoodImageUrl, DEFAULT_FOOD_IMAGE } from '../../lib/storage'
 
 type RiwayatItem = {
   id: string
@@ -13,6 +14,7 @@ type RiwayatItem = {
   desc: string
   weight: string
   weightNum: number
+  foto_url: string | null
 }
 
 export default function PeternakRiwayat() {
@@ -49,10 +51,10 @@ export default function PeternakRiwayat() {
 
           const { data: postings } = await supabase
             .from('postingan_makanan')
-            .select('id, penjual_id, nama_makanan')
+            .select('id, penjual_id, nama_makanan, foto_url')
             .in('id', postingIds)
 
-          const postingMap = new Map<string, { penjual_id: string; nama_makanan: string }>()
+          const postingMap = new Map<string, { penjual_id: string; nama_makanan: string; foto_url: string | null }>()
           if (postings) {
             postings.forEach((p) => postingMap.set(p.id, p))
           }
@@ -97,6 +99,7 @@ export default function PeternakRiwayat() {
               desc: foodName,
               weight: `${weightVal} kg`,
               weightNum: weightVal,
+              foto_url: post?.foto_url || null,
             }
           })
 
@@ -183,8 +186,17 @@ export default function PeternakRiwayat() {
                   <div key={item.id} className="flex flex-col md:flex-row items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition border border-transparent hover:border-slate-100 group gap-4">
                     
                     {/* Waktu & Detail */}
-                    <div className="flex items-center gap-6 flex-1 w-full">
-                      <div className="text-lg font-bold text-slate-900 w-16">{item.time}</div>
+                    <div className="flex items-center gap-4 flex-1 w-full">
+                      <div className="text-lg font-bold text-slate-900 w-16 text-center">{item.time}</div>
+                      <img 
+                        src={resolveFoodImageUrl(item.foto_url, 'https://images.unsplash.com/photo-1595858682057-02488bc6ee05?w=200&h=200&fit=crop')} 
+                        alt={item.desc}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null
+                          e.currentTarget.src = DEFAULT_FOOD_IMAGE
+                        }}
+                        className="w-16 h-16 rounded-xl object-cover"
+                      />
                       <div>
                         <p className={`text-xs font-bold mb-1 ${item.status === 'Selesai' ? 'text-abisGreen' : 'text-amber-500'}`}>{item.status}</p>
                         <h4 className="font-bold text-slate-900 leading-tight">{item.store}</h4>

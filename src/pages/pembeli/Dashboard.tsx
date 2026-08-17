@@ -54,6 +54,8 @@ type FoodItem = {
   distanceLabel: string
   foodType: 'Makanan Berat' | 'Makanan Ringan' | 'Minuman' | 'Semua'
   pickupTime: 'Sekarang' | '30 menit ke depan' | 'Hari ini' | 'Besok' | 'Waktu Ambil'
+  latitude: number | null
+  longitude: number | null
 }
 
 type SellerProfile = {
@@ -426,6 +428,8 @@ export default function PembeliDashboard() {
           distanceLabel: getDistanceLabel(distanceKm, index),
           foodType: getFoodTypeFromTitle(item.nama_makanan),
           pickupTime: getPickupTimeLabel(item.batas_waktu_ambil, index),
+          latitude: itemLatitude,
+          longitude: itemLongitude,
         }
       })
 
@@ -1026,12 +1030,29 @@ export default function PembeliDashboard() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
-                  <Marker position={mapCenter} icon={marketMarkerIcon}>
-                    <Popup>
-                      <div className="text-sm font-semibold text-[#123d32]">Lokasi makananmu</div>
-                      <div className="text-xs text-[#123d32]/70">Area sekitar Banda Aceh</div>
-                    </Popup>
-                  </Marker>
+                  {buyerLocation && (
+                    <Marker position={buyerLocation} icon={marketMarkerIcon}>
+                      <Popup>
+                        <div className="text-sm font-semibold text-[#123d32]">Lokasi Anda</div>
+                      </Popup>
+                    </Marker>
+                  )}
+                  {filteredFoodItems.map((item) => {
+                    const lat = item.latitude ?? (mapCenter[0] + (Math.random() - 0.5) * 0.01)
+                    const lng = item.longitude ?? (mapCenter[1] + (Math.random() - 0.5) * 0.01)
+                    return (
+                      <Marker key={item.id} position={[lat, lng]}>
+                        <Popup>
+                          <div className="flex flex-col gap-1 max-w-[200px]">
+                            <img src={item.image} className="w-full h-24 object-cover rounded-lg" alt={item.title} />
+                            <div className="text-sm font-semibold text-[#123d32]">{item.title}</div>
+                            <div className="text-xs font-bold text-abisOrange">Rp {item.price.toLocaleString('id-ID')}</div>
+                            <div className="text-xs text-[#123d32]/70">{item.location} - {item.distanceLabel}</div>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    )
+                  })}
                 </MapContainer>
 
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,0.15),rgba(255,255,255,0)_45%)]" />

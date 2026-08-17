@@ -23,6 +23,9 @@ export default function PenjualPostingForm() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
+  // Success Modal states
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+
   // Location edit states
   const [lokasiNama, setLokasiNama] = useState('Lokasi Penjemputan')
   const [lokasiAlamat, setLokasiAlamat] = useState('Banda Aceh')
@@ -231,6 +234,11 @@ export default function PenjualPostingForm() {
     }
 
     setLoading(false)
+    setShowSuccessModal(true)
+  }
+
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false)
     navigate('/penjual')
   }
 
@@ -334,6 +342,7 @@ export default function PenjualPostingForm() {
                       <input
                         type="date"
                         value={form.kadaluarsa}
+                        onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
                         onChange={(event) => updateField('kadaluarsa', event.target.value)}
                         className="w-full rounded-xl border border-[#a6aea5] bg-white px-3 py-3 pr-11 text-[0.96rem] text-[#1b4332] outline-none"
                       />
@@ -561,6 +570,30 @@ export default function PenjualPostingForm() {
           </div>
         )}
       </form>
+
+      {/* SUCCESS MODAL */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-[2rem] bg-white p-8 text-center shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-[#e3f4e9]">
+              <Check className="h-10 w-10 text-abisGreen" />
+            </div>
+            <h3 className="font-literata text-2xl font-bold text-[#1b4332] mb-2">
+              Berhasil!
+            </h3>
+            <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+              Postingan makanan surplus Anda telah berhasil dipublikasikan dan bisa dilihat oleh pembeli.
+            </p>
+            <button
+              type="button"
+              onClick={handleCloseSuccessModal}
+              className="w-full rounded-full bg-abisGreen py-3.5 font-bold text-white shadow-lg shadow-abisGreen/20 transition hover:bg-[#153b2d]"
+            >
+              Kembali ke Dashboard
+            </button>
+          </div>
+        </div>
+      )}
     </PenjualLayout>
   )
 }
